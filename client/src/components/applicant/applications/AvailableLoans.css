@@ -1,0 +1,130 @@
+.page-title {
+  color: #2c3e50;
+  font-weight: bold;
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+}
+
+.no-loans-alert {
+  text-align: center;
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+.loan-card-wrapper {
+  /* Removed animation from here */
+  transition:  box-shadow 0.2s ease-in-out;
+}
+
+.loan-card-wrapper:hover {
+  /* Kept hover effect */
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+.loan-card {
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  background-color: white;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.loan-title {
+  font-size: 1.25rem;
+  color: #2c3e50;
+  margin-bottom: 1rem;
+}
+
+.loan-description{
+    font-size: 0.9rem;
+    color: #4a5568;
+    margin-bottom: 0.75rem;
+}
+
+.loan-details {
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  color: #718096;
+}
+
+.loan-details p{
+    margin-bottom: 0.25rem;
+}
+
+.loan-fields-preview {
+  margin-bottom: 1rem;
+}
+
+.fields-preview-title {
+  font-size: 0.9rem;
+  color: #34495e;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+
+.loan-fields-preview ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.loan-fields-preview li {
+  padding: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.875rem;
+  color: #3498db;
+  display: flex;
+  align-items: center;
+}
+.loan-fields-preview li:last-child{
+    border-bottom: none;
+}
+
+.loan-fields-preview li:first-child {
+  border-top-left-radius: 0.375rem;
+  border-top-right-radius: 0.375rem;
+}
+
+.loan-fields-preview li:last-child {
+  border-bottom-left-radius: 0.375rem;
+  border-bottom-right-radius: 0.375rem;
+}
+
+.apply-button {
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  background-color: #3498db;
+  color: white;
+  border: none;
+  transition:
+    background-color 0.2s ease-in-out,
+    transform 0.1s ease-in-out;
+}
+
+.apply-button:hover {
+  background-color: #217dbb;
+  transform: translateY(-2px);
+}
+
+.apply-button:active {
+  transform: translateY(0);
+}

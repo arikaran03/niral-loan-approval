@@ -1,0 +1,168 @@
+/* Banking Theme Navbar Styles */
+.banking-navbar {
+    background: linear-gradient(135deg, #2c3e50, #3498db);
+    padding: 0.5rem 1rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    z-index: 1000;
+  }
+  
+  .navbar-brand-custom {
+    display: flex !important;
+    align-items: center;
+    padding: 0;
+    margin-right: 2rem;
+  }
+  
+  .logo-container {
+    background: white;
+    padding: 8px;
+    border-radius: 10px;
+    margin-right: 1rem;
+  }
+  
+  .navbar-logo {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+  }
+  
+  .brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+  }
+  
+  .bank-name {
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  
+  .portal-text {
+    color: rgba(255,255,255,0.9);
+    font-size: 0.9rem;
+    font-weight: 400;
+  }
+  
+  .toggle-button {
+    border-color: rgba(255,255,255,0.5);
+  }
+  
+  .toggle-button:focus {
+    box-shadow: none;
+  }
+  
+  .nav-link-item {
+    color: rgba(255,255,255,0.9) !important;
+    padding: 1rem 1.5rem !important;
+    margin: 0 0.5rem;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    transition: all 0.3s ease;
+  }
+  
+  .nav-link-item:hover {
+    background: rgba(255,255,255,0.1);
+    color: white !important;
+  }
+  
+  .nav-link-item.active {
+    background: rgba(255,255,255,0.15);
+    font-weight: 500;
+  }
+  
+  .nav-icon {
+    font-size: 1.2rem;
+    margin-right: 0.75rem;
+  }
+  
+  .profile-dropdown {
+    margin-left: 1rem;
+  }
+  
+  .profile-toggle {
+    background: transparent !important;
+    border: none;
+    display: flex !important;
+    align-items: center;
+    padding: 0.75rem 1.25rem !important;
+    color: white !important;
+    transition: all 0.3s ease;
+  }
+  
+  .profile-toggle:hover {
+    background: rgba(255,255,255,0.1) !important;
+  }
+  
+  .profile-toggle::after {
+    display: none;
+  }
+  
+  .profile-icon {
+    font-size: 1.5rem;
+    margin-right: 0.75rem;
+  }
+  
+  .profile-text {
+    font-size: 0.95rem;
+  }
+  
+  .dropdown-menu-custom {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+    margin-top: 10px;
+    padding: 0.5rem;
+    min-width: 220px;
+  }
+  
+  .dropdown-item-custom {
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    transition: all 0.2s ease;
+    color: #2c3e50;
+  }
+  
+  .dropdown-item-custom:hover {
+    background: #f8f9fa;
+    transform: translateX(5px);
+  }
+  
+  .dropdown-icon {
+    font-size: 1.1rem;
+    margin-right: 1rem;
+    width: 20px;
+  }
+  
+  .dropdown-divider {
+    margin: 0.5rem 0;
+  }
+  
+  .logout-item {
+    color: #e74c3c !important;
+  }
+  
+  .logout-item:hover {
+    color: #c0392b !important;
+  }
+  
+  @media (max-width: 992px) {
+    .nav-link-item {
+      margin: 0.25rem 0;
+      padding: 0.75rem 1rem !important;
+    }
+    
+    .profile-toggle {
+      padding: 0.75rem 0 !important;
+    }
+    
+    .dropdown-menu-custom {
+      margin-top: 0;
+      box-shadow: none;
+      border-radius: 0 0 10px 10px;
+    }
+  }

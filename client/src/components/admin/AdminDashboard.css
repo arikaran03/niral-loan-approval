@@ -1,0 +1,187 @@
+/* src/components/admin/AdminDashboard.css */
+
+/* --- Variables (align with theme if needed) --- */
+.admin-dashboard {
+    --primary-color: #0d6efd;
+    --success-color: #198754;
+    --info-color: #0dcaf0;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+    --secondary-color: #6c757d;
+    --light-color: #f8f9fa;
+    --dark-color: #212529;
+    --border-color: #dee2e6;
+    --border-radius: 0.375rem;
+    --subtle-border-color: #e9ecef;
+    --text-muted-color: #5a6268;
+    --header-text-color: #343a40;
+    background-color: #f4f7fc; /* Page background */
+}
+
+/* --- Page Header --- */
+.page-header .h3 {
+    font-weight: 600;
+}
+.page-header .icon-header {
+    font-size: 1.4em; /* Larger header icon */
+}
+
+/* --- Loading/Error/No Data Containers --- */
+.dashboard-message-container {
+    min-height: calc(100vh - 150px); /* Adjust height */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+.dashboard-message-container .alert {
+    max-width: 600px;
+    width: 100%;
+}
+
+/* --- Stat Cards --- */
+.stat-card {
+    border: none; /* Remove default border */
+    border-radius: var(--border-radius);
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+.stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 .5rem 1rem rgba(0,0,0,.1)!important; /* Enhanced shadow on hover */
+}
+.stat-card .card-body {
+    padding: 1.25rem; /* Consistent padding */
+}
+.stat-card .stat-icon {
+    font-size: 2.5rem; /* Larger icons */
+}
+.stat-card .stat-label {
+    font-size: 0.75rem; /* Smaller label */
+    font-weight: 600;
+    margin-bottom: 0.1rem;
+}
+.stat-card .stat-value {
+    line-height: 1.2;
+}
+/* Specific border colors */
+.stat-card.border-primary { border-left-color: var(--primary-color) !important; }
+.stat-card.border-success { border-left-color: var(--success-color) !important; }
+.stat-card.border-info { border-left-color: var(--info-color) !important; }
+.stat-card.border-warning { border-left-color: var(--warning-color) !important; }
+
+
+/* --- Chart Cards --- */
+.dashboard-chart-card {
+    border: none;
+    border-radius: var(--border-radius);
+}
+.dashboard-chart-card .card-header {
+    background-color: var(--light-color);
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 500;
+    font-size: 0.95rem;
+    padding: 0.75rem 1.25rem;
+    display: flex;
+    align-items: center;
+}
+.dashboard-chart-card .card-header svg {
+    margin-right: 0.6rem;
+    font-size: 1.1em;
+}
+.dashboard-chart-card .card-body {
+    padding: 1rem 0.5rem 0.5rem 0.5rem; /* Adjust padding around chart */
+}
+/* Recharts text styling */
+.recharts-cartesian-axis-tick text {
+    font-size: 11px; /* Smaller axis labels */
+    fill: var(--text-muted-color);
+}
+.recharts-tooltip-wrapper {
+    font-size: 12px;
+    border-radius: var(--border-radius-sm) !important;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    border: none !important;
+}
+.recharts-legend-item {
+    font-size: 12px !important;
+}
+
+
+/* --- Recent Submissions Table --- */
+.recent-submissions-card {
+    border: none;
+    border-radius: var(--border-radius);
+}
+.recent-submissions-card .card-header {
+    background-color: var(--light-color);
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 500;
+    font-size: 0.95rem;
+    padding: 0.75rem 1.25rem;
+    display: flex;
+    align-items: center;
+}
+.recent-submissions-card .card-header svg {
+    margin-right: 0.6rem;
+    font-size: 1.1em;
+}
+
+.recent-submissions-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    font-size: 0.875rem; /* Slightly smaller table text */
+    background-color: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+}
+.recent-submissions-table thead {
+    background-color: var(--light-color);
+    color: #495057;
+    border-bottom: 2px solid var(--border-color);
+}
+.recent-submissions-table th,
+.recent-submissions-table td {
+    padding: 0.75rem 1rem; /* Adjust padding */
+    vertical-align: middle;
+    border-top: 1px solid var(--subtle-border-color);
+    text-align: left;
+}
+.recent-submissions-table th {
+    font-weight: 500;
+    white-space: nowrap;
+    font-size: 0.75rem; /* Smaller header */
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6c757d;
+}
+.recent-submissions-table th.text-center,
+.recent-submissions-table td.text-center { text-align: center; }
+.recent-submissions-table th.text-end,
+.recent-submissions-table td.text-end { text-align: right; }
+
+.recent-submissions-table tbody tr:hover {
+    background-color: rgba(13, 110, 253, 0.03); /* Even subtler hover */
+}
+
+.recent-submissions-table .status-badge-table {
+    font-size: 0.7em; /* Smaller badge in table */
+    font-weight: 600;
+    padding: 0.3em 0.6em;
+}
+
+/* Table Action Button */
+.recent-submissions-table .action-button {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+    line-height: 1;
+    border-radius: var(--border-radius-sm);
+    border-width: 1px;
+    color: var(--primary-color); /* Make view button primary */
+}
+.recent-submissions-table .action-button:hover {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}

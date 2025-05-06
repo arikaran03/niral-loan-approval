@@ -1,0 +1,150 @@
+/* src/components/admin/LoanListPage.css */
+
+/* --- Base & Variables --- */
+.loan-list-page {
+  --primary-color: #0d6efd;
+  --secondary-color: #6c757d;
+  --success-color: #198754;
+  --info-color: #0dcaf0;
+  --light-gray: #f8f9fa;
+  --border-color: #e9ecef; /* Lighter border */
+  --text-muted: #6c757d;
+  --border-radius-sm: 0.25rem;
+  --border-radius-md: 0.375rem;
+  background-color: #f4f7fc; /* Page background */
+  min-height: calc(100vh - 60px); /* Example height minus navbar */
+}
+
+/* --- Header --- */
+.page-header .h3 {
+  font-weight: 600;
+  color: #343a40; /* Darker title */
+}
+.page-header .icon-header {
+  color: var(--primary-color);
+  font-size: 1.3em; /* Slightly larger icon */
+}
+.page-header .create-button {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.8rem;
+}
+
+/* --- Loading State --- */
+.loan-list-page .spinner-border {
+  color: var(--primary-color);
+}
+.loan-list-page .text-muted.fs-5 { /* Loading text */
+  color: var(--secondary-color) !important;
+}
+
+/* --- Table Styling --- */
+.data-card {
+  border: none; /* Remove card border */
+  border-radius: var(--border-radius-md);
+}
+
+.loan-list-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-size: 0.9rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+  background-color: #fff; /* Ensure table background */
+}
+
+.loan-list-table thead {
+  background-color: var(--light-gray);
+  color: #495057; /* Header text color */
+  border-bottom: 2px solid var(--border-color);
+}
+
+.loan-list-table th,
+.loan-list-table td {
+  padding: 0.9rem 1rem; /* Increased padding */
+  vertical-align: middle;
+  border-top: 1px solid var(--border-color);
+  text-align: left; /* Default align left */
+}
+.loan-list-table th.text-center,
+.loan-list-table td.text-center {
+  text-align: center; /* Center specific columns */
+}
+
+.loan-list-table th {
+  font-weight: 500;
+  white-space: nowrap;
+  font-size: 0.85rem; /* Smaller header text */
+  text-transform: uppercase; /* Uppercase headers */
+  letter-spacing: 0.5px;
+}
+
+.loan-list-table tbody tr {
+  transition: background-color 0.15s ease-in-out;
+}
+.loan-list-table tbody tr:hover {
+  background-color: #f8f9fa; /* Subtle hover */
+}
+
+/* Table Links */
+.loan-title-link {
+  font-weight: 500 !important; /* Make title slightly bolder */
+  color: var(--primary-color) !important;
+}
+.loan-title-link:hover {
+  text-decoration: underline !important;
+}
+.loan-list-table small.text-muted {
+  font-size: 0.8em;
+  color: #888 !important; /* Lighter muted text */
+}
+
+/* Status Badge Refinement */
+.loan-list-table .badge {
+  font-size: 0.75em;
+  font-weight: 600;
+  padding: 0.4em 0.7em;
+  vertical-align: middle;
+}
+/* Use Bootstrap 5.3 subtle badges if available, or define similar styles */
+.badge.bg-success-subtle { background-color: #d1e7dd; }
+.badge.text-success-emphasis { color: #0a3622 !important; }
+.badge.bg-secondary-subtle { background-color: #e2e3e5; }
+.badge.text-secondary-emphasis { color: #41464b !important; }
+
+
+/* --- Action Buttons Refinement --- */
+.action-buttons-group .action-button {
+  padding: 0.3rem 0.6rem; /* Consistent padding */
+  font-size: 0.9rem; /* Icon size */
+  line-height: 1; /* Align icon nicely */
+  border-radius: var(--border-radius-sm);
+  border: 1px solid transparent; /* Start transparent */
+  background-color: transparent;
+  color: var(--secondary-color); /* Default icon color */
+  transition: all 0.2s ease-in-out;
+}
+.action-buttons-group .action-button:hover {
+  background-color: var(--light-gray); /* Light background on hover */
+  border-color: #ccc; /* Subtle border on hover */
+  color: var(--primary-color); /* Primary color on hover */
+  transform: translateY(-1px); /* Slight lift */
+}
+/* Specific hover colors if needed */
+.action-buttons-group .action-button.edit:hover { color: var(--primary-color); }
+.action-buttons-group .action-button.submissions:hover { color: var(--info-color); }
+
+.action-buttons-group .action-button:active {
+  transform: translateY(0);
+  background-color: #e2e6ea; /* Slightly darker active state */
+}
+
+/* Alert Styling */
+.alert {
+  border-radius: var(--border-radius-md);
+  border-left-width: 4px; /* Add emphasis border */
+}
+.alert-danger { border-left-color: var(--danger-color); }
+.alert-info { border-left-color: var(--info-color); }
+

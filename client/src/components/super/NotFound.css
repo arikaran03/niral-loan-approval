@@ -1,0 +1,294 @@
+.notfound-wrapper {
+  min-height: 100vh;
+  background: linear-gradient(45deg, #000428 0%, #004e92 100%);
+  overflow: hidden;
+  position: relative;
+}
+
+.cosmic-container {
+  position: relative;
+  z-index: 2;
+}
+
+/* Animated cosmic background */
+.stars {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><circle cx="50" cy="50" r="1" fill="white"/></svg>');
+  animation: stars 200s linear infinite;
+}
+
+.twinkling {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  animation: twinkle 5s ease-in-out infinite;
+}
+
+@keyframes stars {
+  from { transform: translateY(0); }
+  to { transform: translateY(-100%); }
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; }
+}
+
+.content-container {
+  position: relative;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  justify-content: center;
+}
+
+.astronaut-container {
+  position: relative;
+  width: 300px;
+  height: 400px;
+  margin: 0 auto 2rem;
+}
+
+/* Astronaut Animation */
+.astronaut {
+  position: absolute;
+  width: 120px;
+  height: 180px;
+  left: 50%;
+  transform: translateX(-50%);
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(-50%, 0); }
+  50% { transform: translate(-50%, -20px); }
+}
+
+/* Detailed Astronaut CSS (simplified for example) */
+.helmet {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  background: #fff;
+  border-radius: 50%;
+  top: 0;
+  left: 20px;
+}
+
+.visor {
+  position: absolute;
+  width: 60px;
+  height: 40px;
+  background: #4a90e2;
+  border-radius: 15px;
+  top: 20px;
+  left: 10px;
+}
+
+/* Glitch text effect */
+.glitch {
+  position: relative;
+  font-size: 8rem;
+  color: #fff;
+  text-shadow: 0.05em 0 0 rgba(255,0,0,.75),
+               -0.025em -0.05em 0 rgba(0,255,0,.75),
+               0.025em 0.05em 0 rgba(0,0,255,.75);
+  animation: glitch 500ms infinite;
+}
+
+@keyframes glitch {
+  0% { text-shadow: 0.05em 0 0 rgba(255,0,0,.75),
+                   -0.05em -0.025em 0 rgba(0,255,0,.75),
+                   -0.025em 0.05em 0 rgba(0,0,255,.75); }
+  50% { text-shadow: -0.05em -0.025em 0 rgba(255,0,0,.75),
+                    0.025em 0.025em 0 rgba(0,255,0,.75),
+                    -0.05em -0.05em 0 rgba(0,0,255,.75); }
+  100% { text-shadow: -0.025em 0 0 rgba(255,0,0,.75),
+                     -0.025em -0.025em 0 rgba(0,255,0,.75),
+                     -0.025em -0.05em 0 rgba(0,0,255,.75); }
+}
+
+.text-content {
+  text-align: center;
+  color: white;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.subtext {
+  font-size: 1.2rem;
+  margin: 1rem 0 2rem;
+  line-height: 1.6;
+}
+
+.home-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 1rem 2rem;
+  background: linear-gradient(45deg, #4a90e2, #6a11cb);
+  border-radius: 50px;
+  text-decoration: none;
+  color: white;
+  font-weight: bold;
+  transition: transform 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.home-button:hover {
+  transform: translateY(-3px);
+}
+
+.home-button:hover .flame {
+  animation: burn 0.3s infinite;
+}
+
+.button-icon {
+  margin-left: 1rem;
+}
+
+.rocket {
+  width: 30px;
+  height: 30px;
+  position: relative;
+}
+
+.flame {
+  position: absolute;
+  width: 8px;
+  height: 15px;
+  background: #ff9a00;
+  border-radius: 50%;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+@keyframes burn {
+  0%, 100% { transform: translateX(-50%) scaleY(1); }
+  50% { transform: translateX(-50%) scaleY(1.2); }
+}
+
+.cosmic-footer {
+  position: absolute;
+  bottom: 1rem;
+  width: 100%;
+  text-align: center;
+  color: rgba(255,255,255,0.7);
+  font-size: 0.9rem;
+}
+
+/* Floating objects animation */
+.floating-objects {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+}
+
+.planet {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  background: #ff6b6b;
+  border-radius: 50%;
+  top: 20%;
+  right: 10%;
+  animation: drift 20s linear infinite;
+}
+
+.satellite {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  background: #4ecdc4;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  animation: drift 15s linear infinite reverse;
+}
+
+.comet {
+  position: absolute;
+  width: 100px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #fff);
+  top: 30%;
+  left: -100px;
+  animation: comet 10s linear infinite;
+}
+
+@keyframes drift {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes comet {
+  0% { transform: translateX(0); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateX(100vw); opacity: 0; }
+}
+
+@media (max-width: 768px) {
+  .glitch {
+    font-size: 5rem;
+  }
+  
+  .astronaut-container {
+    width: 200px;
+    height: 300px;
+  }
+}
+
+
+.game-container {
+  position: relative;
+  margin: 2rem 0;
+}
+
+.game-score {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.5rem;
+  color: #2ecc71;
+  font-weight: bold;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  z-index: 1;
+}
+
+.game-restart {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 1rem 2rem;
+  background: #e74c3c;
+  border: none;
+  border-radius: 25px;
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.game-restart:hover {
+  transform: translate(-50%, -50%) scale(1.1);
+  background: #c0392b;
+}
+
+/* Add these to existing cosmic background styles */
+.content-container {
+  z-index: 2;
+}
+
+canvas {
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(5px);
+}
+

@@ -1,0 +1,151 @@
+/* src/components/ResultsList.css */
+
+/* --- Variables (align with theme) --- */
+.results-list-card { /* Scope styles */
+  --primary-color: #0d6efd;
+  --secondary-color: #6c757d;
+  --success-color: #198754;
+  --info-color: #0dcaf0;
+  --warning-color: #ffc107;
+  --danger-color: #dc3545;
+  --light-color: #f8f9fa;
+  --dark-color: #212529; /* Use this for standard text */
+  --border-color: #dee2e6;
+  --border-radius: 0.375rem;
+  --subtle-border-color: #e9ecef;
+  --table-hover-bg: rgba(13, 110, 253, 0.04);
+  --text-muted-color: #5a6268; /* Darker muted color */
+  --header-text-color: #343a40; /* Darker header text */
+  --cell-text-color: #212529; /* Standard dark text for cells */
+}
+
+/* --- Card & Header --- */
+.results-list-card {
+  border: none;
+  border-radius: 0.5rem;
+}
+.results-list-card .results-header {
+  background-color: var(--light-color);
+  border-bottom: 1px solid var(--border-color);
+}
+.results-list-card .results-count {
+  font-size: 0.9rem;
+  color: var(--text-muted-color); /* Use darker muted color */
+  padding-top: 0.25rem;
+}
+
+/* --- Search Input --- */
+.search-input-group { max-width: 350px; }
+.search-input-group .input-group-text { background-color: #fff; border-right: none; padding-left: 0.75rem; padding-right: 0.5rem; }
+.search-input-group .form-control.search-input { border-left: none; font-size: 0.9rem; padding-left: 0.25rem; }
+.search-input-group .form-control:focus { box-shadow: none; border-color: var(--primary-color); }
+.search-input-group:focus-within { box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25); border-radius: var(--border-radius); }
+.search-input-group .clear-filter-btn { border-left: none; color: var(--secondary-color); padding: 0 0.75rem; }
+.search-input-group .clear-filter-btn:hover { color: var(--danger-color); background-color: transparent; }
+
+
+/* --- Table --- */
+.results-table {
+  border-collapse: separate; border-spacing: 0; width: 100%;
+  font-size: 0.9rem; background-color: #fff;
+  border: 1px solid var(--border-color); border-radius: var(--border-radius);
+  overflow: hidden;
+}
+.results-table thead {
+  background-color: var(--light-color);
+  color: var(--header-text-color); /* Darker header text */
+  border-bottom: 2px solid var(--border-color);
+}
+.results-table th,
+.results-table td {
+  padding: 0.8rem 1rem; vertical-align: middle;
+  border-top: 1px solid var(--subtle-border-color);
+  text-align: left;
+  color: var(--cell-text-color); /* Use standard dark text */
+}
+.results-table th {
+  font-weight: 500; white-space: nowrap; font-size: 0.8rem;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--header-text-color); /* Darker header text */
+}
+.results-table th.text-center,
+.results-table td.text-center { text-align: center; }
+.results-table tbody tr:hover { background-color: var(--table-hover-bg); }
+
+/* Specific Cell Styles */
+.results-table .date-cell {
+  font-size: 0.85rem;
+  color: var(--text-muted-color); /* Use darker muted color */
+}
+.results-table .loan-title { font-weight: 500; }
+.results-table .applicant-name {}
+.results-table .account-number { font-family: monospace; font-size: 0.85rem; }
+.results-table small.text-muted {
+  font-size: 0.8em;
+  color: var(--text-muted-color) !important; /* Darker muted text */
+}
+
+/* Sorting Headers */
+.sortable-header { cursor: pointer; user-select: none; transition: background-color 0.15s ease-in-out; }
+.sortable-header:hover { background-color: rgba(0, 0, 0, 0.03); }
+.sort-stack { display: inline-flex; align-items: center; }
+.sort-icon { width: 1em; height: 1em; margin-left: 0.4rem; color: #adb5bd; transition: color 0.15s ease-in-out; flex-shrink: 0; }
+.sort-icon-active { color: var(--dark-color); }
+
+/* Status Badge */
+.status-badge {
+  font-size: 0.75em; font-weight: 600; padding: 0.4em 0.7em;
+  vertical-align: middle; border: 1px solid transparent;
+}
+/* Define subtle variants if not using Bootstrap 5.3+ */
+.badge.bg-success-subtle { background-color: #d1e7dd; border-color: #a3cfbb; }
+.badge.text-success-emphasis { color: #084224 !important; } /* Darker Green */
+.badge.bg-secondary-subtle { background-color: #e2e3e5; border-color: #c6c8ca; }
+.badge.text-secondary-emphasis { color: #343a40 !important; } /* Darker Gray */
+.badge.bg-warning-subtle { background-color: #fff3cd; border-color: #ffe69c; }
+.badge.text-warning-emphasis { color: #664d03 !important; } /* Darker Yellow */
+.badge.bg-info-subtle { background-color: #cff4fc; border-color: #9eeaf9; }
+.badge.text-info-emphasis { color: #034a59 !important; } /* Darker Info */
+.badge.bg-primary-subtle { background-color: #cfe2ff; border-color: #a3c5ff; }
+.badge.text-primary-emphasis { color: #042354 !important; } /* Darker Blue */
+.badge.bg-danger-subtle { background-color: #f8d7da; border-color: #f1aeb5; }
+.badge.text-danger-emphasis { color: #58151c !important; } /* Darker Red */
+
+
+/* Action Button */
+.view-button {
+  padding: 0.3rem 0.7rem; font-size: 0.85rem;
+  border-radius: var(--border-radius-sm); transition: all 0.2s ease;
+  border-width: 1px;
+}
+.view-button svg { margin-left: 0.25rem; transition: transform 0.2s ease; }
+.view-button:hover svg { transform: translateX(3px); }
+.view-button:hover { background-color: var(--primary-color) !important; color: white !important; border-color: var(--primary-color) !important; }
+
+
+/* --- Pagination --- */
+.pagination-footer { background-color: var(--light-color); padding: 0.75rem 1rem; }
+.results-pagination .page-item .page-link {
+  border-radius: var(--border-radius-sm); padding: 0.4rem 0.8rem;
+  font-size: 0.85rem; color: var(--primary-color); background-color: white;
+  border: 1px solid var(--border-color); margin: 0 0.15rem;
+  transition: all 0.15s ease-in-out;
+}
+.results-pagination .page-item .page-link:hover { background-color: #e9ecef; border-color: #adb5bd; color: var(--primary-color); z-index: 2; }
+.results-pagination .page-item.active .page-link { background-color: var(--primary-color); border-color: var(--primary-color); color: white; z-index: 3; }
+.results-pagination .page-item.disabled .page-link { opacity: 0.6; background-color: white; border-color: var(--border-color); color: var(--secondary-color); }
+
+/* --- No Results --- */
+.results-list-card .text-center.text-muted.p-4,
+.results-list-card .text-center.text-muted.p-5 {
+  font-style: italic;
+  color: var(--text-muted-color) !important; /* Use darker muted */
+}
+
+/* --- Responsive --- */
+@media (max-width: 768px) {
+  .results-list-card .results-header .results-count { width: 100%; text-align: center; margin-bottom: 0.75rem; }
+  .results-list-card .results-header .search-input-group { width: 100%; max-width: none; }
+  .results-table th, .results-table td { padding: 0.6rem 0.75rem; font-size: 0.85rem; }
+  .results-table .date-cell { white-space: normal; }
+}

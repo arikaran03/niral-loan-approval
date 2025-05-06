@@ -1,0 +1,84 @@
+/* Banking Theme Modal Styles */
+.banking-modal {
+    border-radius: 15px;
+    overflow: hidden;
+    border: none;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+  }
+  
+  .modal-header-banking {
+    background: linear-gradient(135deg, #4a90e2, #3068b3);
+    color: white;
+    border: none;
+    padding: 1.5rem;
+    position: relative;
+  }
+  
+  .modal-title-banking {
+    font-weight: 600;
+    font-size: 1.5rem;
+    margin-left: 2.5rem;
+  }
+  
+  .modal-icon-container {
+    position: absolute;
+    left: 1.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  
+  .modal-icon {
+    font-size: 1.8rem;
+    color: rgba(255,255,255,0.9);
+  }
+  
+  .modal-body-banking {
+    padding: 2rem;
+    background: #f8f9fa;
+  }
+  
+  .modal-content-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .modal-description {
+    color: #4a5568;
+    line-height: 1.6;
+    margin: 0;
+    font-size: 1rem;
+  }
+  
+  .modal-footer-banking {
+    background: #fff;
+    border-top: 1px solid #e2e8f0;
+    padding: 1rem 2rem;
+    justify-content: flex-end;
+  }
+  
+  .modal-button {
+    background: linear-gradient(135deg, #4a90e2, #3068b3);
+    border: none;
+    padding: 0.75rem 2rem;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+  }
+  
+  .modal-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 15px rgba(74, 144, 226, 0.3);
+  }
+  
+  /* Close Button Override */
+  .btn-close {
+    filter: invert(1);
+    opacity: 0.8;
+    transition: all 0.3s ease;
+  }
+  
+  .btn-close:hover {
+    opacity: 1;
+    transform: rotate(90deg);
+  }

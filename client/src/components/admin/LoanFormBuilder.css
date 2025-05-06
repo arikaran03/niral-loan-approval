@@ -1,0 +1,345 @@
+/* src/components/admin/LoanFormBuilder.css */
+
+/* --- CSS Variables --- */
+.loan-form-builder-component {
+  --primary-color: #0d6efd;
+  --success-color: #198754;
+  --info-color: #0dcaf0; /* Used for derived field text */
+  --warning-color: #ffc107;
+  --danger-color: #dc3545;
+  --danger-hover-color: #bb2d3b;
+  --secondary-color: #6c757d;
+  --light-color: #f8f9fa;
+  --dark-color: #212529;
+  --border-color: #ced4da; /* Standard border color */
+  --border-color-subtle: #dee2e6; /* Lighter border */
+  --border-radius: 0.375rem;
+  --light-subtle-bg: #fcfcfd; /* Subtle background for alternating cards */
+  --input-focus-border-color: #86b7fe; /* Bootstrap default */
+  --input-focus-box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25); /* Bootstrap default */
+}
+
+/* --- General Layout & Cards --- */
+.loan-form-builder-content .card {
+  border: 1px solid var(--border-color-subtle);
+  border-radius: 0.5rem;
+  overflow: hidden; /* Needed for border-radius */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+.loan-form-builder-content .card-header {
+  font-weight: 500;
+  font-size: 1rem;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--border-color-subtle);
+  display: flex;
+  align-items: center;
+  background-color: #f8f9fa; /* Bootstrap light */
+  color: #343a40; /* Bootstrap dark gray */
+}
+.loan-form-builder-content .card-header svg {
+  margin-right: 0.6rem;
+  font-size: 1.1em;
+  vertical-align: middle;
+  color: var(--secondary-color); /* Default icon color */
+}
+.loan-form-builder-content .card-body {
+  padding: 1.5rem;
+}
+/* Subtle background for specific card bodies */
+.loan-form-builder-content .card-body.bg-light-subtle {
+    background-color: var(--light-subtle-bg) !important;
+}
+
+
+/* --- Forms & Inputs --- */
+.loan-form-builder-component .form-group {
+  margin-bottom: 1rem; /* Default spacing */
+}
+.loan-form-builder-component .form-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 0.4rem;
+  display: block; /* Ensure proper spacing */
+}
+.loan-form-builder-component .form-control,
+.loan-form-builder-component .form-select {
+  font-size: 0.9rem;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color); /* Use standard border color */
+  background-color: #fff; /* Ensure white background */
+}
+.loan-form-builder-component .form-control:focus,
+.loan-form-builder-component .form-select:focus {
+  border-color: var(--input-focus-border-color);
+  box-shadow: var(--input-focus-box-shadow);
+}
+.loan-form-builder-component .form-control::placeholder {
+    color: #a1a8b0;
+    font-style: italic;
+    font-size: 0.85rem;
+    opacity: 0.8;
+}
+/* Ensure Bootstrap's invalid styling applies */
+.loan-form-builder-component .form-control.is-invalid,
+.loan-form-builder-component .form-select.is-invalid {
+  border-color: var(--danger-color);
+  padding-right: calc(1.5em + 0.75rem); /* Make space for icon */
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' width='12' height='12' fill='none' stroke='%23dc3545'%3e%3ccircle cx='6' cy='6' r='4.5'/%3e%3cpath stroke-linejoin='round' d='M5.8 3.6h.4L6 6.5z'/%3e%3ccircle cx='6' cy='8.2' r='.6' fill='%23dc3545' stroke='none'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right calc(0.375em + 0.1875rem) center;
+  background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem);
+}
+.loan-form-builder-component .form-control.is-invalid:focus,
+.loan-form-builder-component .form-select.is-invalid:focus {
+    border-color: var(--danger-color);
+    box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25);
+}
+/* Ensure invalid feedback is visible */
+.loan-form-builder-component .invalid-feedback {
+  display: none; /* Hide by default */
+  width: 100%;
+  margin-top: 0.25rem;
+  font-size: 0.875em;
+  color: var(--danger-color);
+}
+.loan-form-builder-component .is-invalid ~ .invalid-feedback,
+.loan-form-builder-component .is-invalid ~ .form-text + .invalid-feedback {
+    display: block; /* Show when is-invalid */
+}
+/* Ensure multi-select shows invalid state clearly */
+.loan-form-builder-component .form-select.multi-select.is-invalid {
+    border-color: var(--danger-color) !important; /* Ensure border override */
+}
+
+/* --- Multi-Select Border Fix --- */
+/* Increased specificity and ensure border */
+.loan-form-builder-component .custom-field-item .form-group .form-select[multiple] {
+  border: 1px solid var(--border-color) !important; /* Use standard border, !important if needed */
+  min-height: 120px; /* Match inline style */
+  background-color: #fff !important; /* Ensure white background */
+  padding: 0.375rem 0.5rem; /* Standard padding */
+}
+.loan-form-builder-component .custom-field-item .form-group .form-select[multiple]:focus {
+    border-color: var(--input-focus-border-color) !important;
+    box-shadow: var(--input-focus-box-shadow) !important;
+}
+.loan-form-builder-component .custom-field-item .form-group .form-select[multiple].is-invalid {
+    border-color: var(--danger-color) !important; /* Ensure invalid border */
+    padding-right: 0.5rem; /* Reset padding for multi-select */
+    background-image: none; /* Remove icon for multi-select */
+}
+
+
+/* Helper text styling */
+.loan-form-builder-component .form-text {
+    font-size: 0.78rem;
+    color: var(--secondary-color);
+    margin-top: 0.3rem;
+    display: block;
+}
+/* Specific style for "Hold Ctrl..." text */
+.loan-form-builder-component .form-group:has(.form-select[multiple]) .form-text {
+    margin-top: 0.4rem; /* Space above */
+    margin-bottom: 0.2rem; /* Space below */
+}
+/* Styling for "Derives from..." text */
+.loan-form-builder-component .form-text.derived-text {
+    color: var(--info-color);
+    font-style: italic;
+    font-weight: 500;
+}
+
+/* Disabled Input Styling */
+.loan-form-builder-component :disabled,
+.loan-form-builder-component [readonly] { /* Style readonly like disabled */
+    background-color: #e9ecef !important;
+    opacity: 0.7 !important;
+    cursor: not-allowed !important;
+}
+.loan-form-builder-component input[readonly].read-only-input {
+   cursor: text; /* Allow text selection even if readonly */
+   opacity: 1 !important; /* Make text fully visible */
+}
+.loan-form-builder-component input[readonly].read-only-input:focus {
+    box-shadow: none; /* Remove focus ring */
+    border-color: var(--border-color); /* Keep standard border */
+}
+
+/* Style for disabled field ID helper text */
+.loan-form-builder-component input[name$=".field_id"]:disabled + .form-text.derived-text,
+.loan-form-builder-component input[name$=".field_id"][readonly] + .form-text.derived-text {
+     margin-top: 0.4rem; /* Adjust spacing */
+}
+
+
+/* --- Custom Field Section --- */
+.custom-field-item {
+  background-color: #fff;
+  border: 1px solid var(--border-color-subtle) !important;
+  border-radius: var(--border-radius);
+  transition: box-shadow 0.2s ease-in-out, border-color 0.2s ease-in-out;
+  margin-bottom: 1.5rem !important;
+  padding: 1.25rem;
+  position: relative;
+}
+.custom-field-item:last-child {
+    margin-bottom: 1rem !important;
+}
+.custom-field-item:hover {
+  border-color: #adb5bd;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+}
+.custom-field-item .custom-field-header {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #f1f3f5;
+  margin-bottom: 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.custom-field-item .custom-field-header h6 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--primary-color);
+  margin-bottom: 0;
+}
+.custom-field-item .remove-button-inline {
+  padding: 0.1rem 0.2rem;
+  line-height: 1;
+  font-size: 1.1rem;
+  border: none;
+  background: none;
+  color: var(--danger-color);
+  opacity: 0.65;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+.custom-field-item .remove-button-inline:hover,
+.custom-field-item .remove-button-inline:focus {
+  opacity: 1;
+  color: var(--danger-hover-color);
+  outline: none;
+  box-shadow: none;
+}
+.custom-field-item .remove-button-inline:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* --- Row & Column Alignment (Ensure Bootstrap's align-items works) --- */
+.custom-field-item > .row {
+  margin-bottom: 0.75rem; /* Base spacing between rows */
+}
+.custom-field-item > .row:last-of-type {
+  margin-bottom: 0;
+}
+/* Adjust margin for Form.Group within rows using align-items-end */
+.custom-field-item > .row.align-items-end .form-group {
+   margin-bottom: 0.5rem; /* Retain some space below aligned items */
+}
+/* Ensure Form.Check aligns well */
+.custom-field-item .row.align-items-end .form-group .form-check {
+    margin-bottom: 0; /* Remove extra margin below checkbox */
+}
+
+
+/* --- Required Documents Section --- */
+.loan-form-builder-content .list-group { border: none; }
+.loan-form-builder-content .list-group-item {
+  padding: 0.75rem 0.25rem;
+  border-top: 1px solid #f1f3f5;
+  background-color: transparent;
+}
+.loan-form-builder-content .list-group-item:first-child { border-top: none; }
+.loan-form-builder-content .list-group-item strong { font-weight: 500; font-size: 0.95rem; }
+.loan-form-builder-content .list-group-item small.text-muted { font-size: 0.8em; display: block; }
+.loan-form-builder-content .list-group-item .remove-button-inline {
+  padding: 0.1rem 0.2rem; /* Match other remove buttons */
+  line-height: 1;
+  font-size: 1.0rem; /* Slightly smaller */
+  border: none;
+  color: var(--danger-color);
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+.loan-form-builder-content .list-group-item .remove-button-inline:hover {
+  opacity: 1;
+  color: var(--danger-hover-color);
+}
+
+
+/* --- Multi-Select Focus Border (Keep for consistency) --- */
+.loan-form-builder-component .form-group .multi-select:focus,
+.loan-form-builder-component .form-group .multi-select.focus-visible {
+  border-color: var(--input-focus-border-color) !important;
+  box-shadow: var(--input-focus-box-shadow) !important;
+  outline: 0;
+}
+.loan-form-builder-component .form-group:has(.multi-select:focus) > .form-label {
+  color: var(--primary-color);
+}
+
+/* --- Status Bar (Sticky Bottom) --- */
+.form-status-bar {
+  position: sticky; bottom: 0; left: 0; width: 100%; z-index: 1020;
+  border-top: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 -3px 6px rgba(0,0,0,0.1);
+  background-color: #343a40 !important; /* Dark background */
+  padding: 0.5rem 1rem; /* Added padding */
+}
+.status-indicator {
+  font-size: 0.8rem; font-weight: 500; display: flex; align-items: center;
+  transition: color 0.3s ease;
+  color: var(--light-color); /* Default text color */
+}
+.status-indicator svg, .status-indicator .spinner-border { margin-right: 0.4rem; font-size: 1em; }
+.status-indicator.status-saved { color: #63e6be; } /* Light green */
+.status-indicator.status-unsaved { color: #ffd43b; } /* Yellow */
+.status-indicator.status-neutral { color: #adb5bd; } /* Gray */
+.status-indicator.status-saving { color: #ffec99; } /* Lighter Yellow */
+
+.action-buttons .btn { font-size: 0.85rem; padding: 0.4rem 0.9rem; }
+.action-buttons .btn svg { margin-right: 0.4rem; vertical-align: text-bottom; }
+
+
+/* --- Fixed Saving Indicator --- */
+.saving-indicator {
+  position: fixed; top: 15px; right: 20px; z-index: 1051;
+  padding: 0.5rem 1rem; border-radius: 50px; font-weight: 500;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2); display: flex; align-items: center;
+  font-size: 0.9rem; transition: opacity 0.3s ease, background-color 0.3s ease;
+  color: #fff; /* Default text color */
+}
+.saving-indicator.saving-progress { background-color: var(--warning-color); color: #000; }
+.saving-indicator.saving-success { background-color: var(--success-color); color: #fff; }
+.saving-indicator .spinner-grow, .saving-indicator svg { width: 0.8rem; height: 0.8rem; margin-right: 0.5rem; }
+
+.form-status-bar .action-buttons .btn.btn-outline-light:disabled {
+  color: #8196a9; /* Darker gray text (Bootstrap's secondary color) */
+  border-color: #5a6268; /* Slightly darker gray border */
+  background-color: transparent; /* Ensure no background fill */
+  opacity: 0.6; /* Adjust fade level */
+  /* cursor: not-allowed; is inherited */
+  /* Remove pointer events if needed, though Bootstrap usually handles this */
+  /* pointer-events: none; */
+}
+
+/* Disabled Publish Button (Success/Green on Dark BG) */
+.form-status-bar .action-buttons .btn.btn-success:disabled {
+  /* Use a darker, less saturated green */
+  background-color: #105d3b; /* Darker green shade */
+  border-color: #105d3b;   /* Match background */
+  /* Use a muted text color that's visible on the dark green */
+  color: rgba(255, 255, 255, 0.75); /* Semi-transparent white */
+  opacity: 0.7; /* Make overall button slightly faded */
+   /* cursor: not-allowed; is inherited */
+}
+
+/* Prevent hover effects on disabled buttons within the bar */
+.form-status-bar .action-buttons .btn:disabled:hover {
+    /* Reset any potential hover styles */
+    background-color: inherit;
+    border-color: inherit;
+    color: inherit;
+    opacity: inherit; /* Keep the disabled opacity */
+}
