@@ -1,8 +1,8 @@
 // src/pages/SubmissionDetails.jsx (or appropriate path)
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // Removed unused useCallback
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import PropTypes from 'prop-types'; // Import PropTypes
+import PropTypes from 'prop-types';
 import { axiosInstance } from '../../config';
 import {
   Container,
@@ -16,7 +16,7 @@ import {
   Alert,
   Badge,
   ListGroup,
-  ButtonGroup // Added for action buttons
+  ButtonGroup
 } from 'react-bootstrap';
 import {
   ArrowLeft,
@@ -24,22 +24,21 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Loader2,
   User,
   Hash,
   DollarSign,
   Calendar,
-  RotateCcw // Icon for Revert
-} from 'lucide-react';
+  RotateCcw,
+  AlertTriangle, // Icon for image error
+  Image as ImageIcon // Icon for image placeholder
+} from 'lucide-react'; // Using Lucide icons consistently
 import { motion } from 'framer-motion';
 import { format, parseISO, isValid } from 'date-fns';
 import './SubmissionDetails.css'; // Import custom styles
 
 // Stage definitions
-// Removed 'draft' from admin workflow order
-const ADMIN_STAGE_WORKFLOW = ['pending', 'approved', 'rejected'];
 const STAGE_LABELS = {
-  draft: 'Draft', // Keep label for display
+  draft: 'Draft',
   pending: 'Pending Review',
   approved: 'Approved',
   rejected: 'Rejected'
@@ -59,7 +58,6 @@ const stageTextEmphasis = {
 
 // Icon mapping for stages
 const getStatusIcon = (stage) => {
-    // Added me-1 for margin
     switch (stage) {
         case 'approved': return <CheckCircle size={16} className="me-1 text-success" />;
         case 'rejected': return <XCircle size={16} className="me-1 text-danger" />;
@@ -74,40 +72,86 @@ function ImageLoader({ imageId, alt }) {
   const [src, setSrc] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const objectURLRef = useRef(null); // Ref to store the object URL for cleanup
 
   useEffect(() => {
     let isMounted = true;
     setLoading(true); setError(false); setSrc(null);
-    if (!imageId) { setError(true); setLoading(false); return; }
+
+    // Clean up previous object URL if exists
+    if (objectURLRef.current) {
+        URL.revokeObjectURL(objectURLRef.current);
+        objectURLRef.current = null;
+    }
+
+    if (!imageId || typeof imageId !== 'string' || imageId.length < 10) {
+        console.warn("Invalid imageId provided to ImageLoader:", imageId);
+        setError(true); setLoading(false); return;
+    }
+
+    let requestTimeout = setTimeout(() => { // Add a timeout for slow loads
+        if (isMounted && loading) {
+            console.warn(`Image load timeout for ${imageId}`);
+            setError(true); // Mark as error if loading takes too long (e.g., > 15 seconds)
+            setLoading(false);
+        }
+    }, 15000); // 15 second timeout
 
     (async () => {
       try {
         const res = await axiosInstance.get(`/api/image/${imageId}`, { responseType: 'blob' });
+        clearTimeout(requestTimeout); // Clear timeout on successful fetch start
         if (!isMounted) return;
-        const objectURL = URL.createObjectURL(res.data);
-        setSrc(objectURL);
-        // Consider revoking URL on cleanup if memory becomes an issue, but be careful with state updates
-        // return () => URL.revokeObjectURL(objectURL);
-      } catch (err) { console.error('Failed to load image', imageId, err); if (isMounted) setError(true); }
-      finally { if (isMounted) setLoading(false); }
+        const newObjectURL = URL.createObjectURL(res.data);
+        objectURLRef.current = newObjectURL;
+        setSrc(newObjectURL);
+      } catch (err) {
+        clearTimeout(requestTimeout); // Clear timeout on error
+        console.error('Failed to load image', imageId, err);
+        if (isMounted) setError(true);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
     })();
-    return () => { isMounted = false; };
-  }, [imageId]);
 
-  if (loading) return <div className="image-loader text-center p-3"><Spinner animation="border" size="sm" /></div>;
-  if (error || !src) return <div className="image-error text-muted small text-center p-2">(Image not available)</div>;
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      clearTimeout(requestTimeout); // Clear timeout on unmount
+      if (objectURLRef.current) {
+          URL.revokeObjectURL(objectURLRef.current);
+          objectURLRef.current = null;
+      }
+    };
+  }, [imageId]); // Dependency array
+
+  if (loading) return (
+      <div className="image-placeholder image-loading text-center p-3">
+          <Spinner animation="border" size="sm" variant="secondary"/>
+          <span className="d-block small text-muted mt-1">Loading...</span>
+      </div>
+  );
+  if (error || !src) return (
+      <div className="image-placeholder image-error text-center p-2">
+          <AlertTriangle size={24} className="text-danger mb-1"/>
+          <span className="d-block small text-danger">Load Failed</span>
+      </div>
+  );
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }} className="image-wrapper">
-      <Image src={src} alt={alt} rounded fluid className="submission-image" />
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="image-wrapper"
+    >
+      <a href={src} target="_blank" rel="noopener noreferrer" title={`View full image: ${alt || 'Submission Image'}`}>
+        <Image src={src} alt={alt || 'Submission Image'} rounded fluid className="submission-image" />
+      </a>
     </motion.div>
   );
 }
-// Define PropTypes for ImageLoader
-ImageLoader.propTypes = {
-  imageId: PropTypes.string, // Can be null or string
-  alt: PropTypes.string
-};
+ImageLoader.propTypes = { imageId: PropTypes.string, alt: PropTypes.string };
 
 // --- Main Component ---
 export default function SubmissionDetails() {
@@ -115,7 +159,7 @@ export default function SubmissionDetails() {
   const navigate = useNavigate();
   const [submission, setSubmission] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [actionInProgress, setActionInProgress] = useState(false); // Combined state for actions
+  const [actionInProgress, setActionInProgress] = useState(false);
   const [error, setError] = useState(null);
 
   // Fetch the submission on mount
@@ -135,36 +179,28 @@ export default function SubmissionDetails() {
   // --- Stage Change Logic ---
   const handleChangeStage = async (targetStage) => {
     if (!targetStage || actionInProgress) return;
-    setActionInProgress(true);
-    setError(null); // Clear previous errors
+    setActionInProgress(true); setError(null);
     console.log(`Attempting to change stage to: ${targetStage}`);
     try {
-      const { data } = await axiosInstance.patch(
-        `/api/application/submissions/${id}/change-stage`,
-        { stage: targetStage } // Send the target stage name
-      );
-      setSubmission(data); // Update local state with the response
+      const payload = { stage: targetStage };
+      // if (targetStage === 'rejected') { payload.rejection_reason = prompt("Enter rejection reason (optional):"); } // Example prompt
+      const { data } = await axiosInstance.patch(`/api/application/submissions/${id}/change-stage`, payload);
+      setSubmission(data);
       console.log(`Stage changed successfully to: ${targetStage}`);
-    } catch (err) {
-      console.error(`Error changing stage to ${targetStage}:`, err);
-      setError(err.response?.data?.error || `Failed to change stage to ${STAGE_LABELS[targetStage] || targetStage}.`); // Set error state
-    } finally {
-      setActionInProgress(false);
-    }
+    } catch (err) { console.error(`Error changing stage to ${targetStage}:`, err); setError(err.response?.data?.error || `Failed to change stage.`); }
+    finally { setActionInProgress(false); }
   };
 
   // Determine available actions based on current stage
   const currentStage = submission?.stage;
   const canApprove = currentStage === 'pending';
   const canReject = currentStage === 'pending';
-  // Allow reverting from approved/rejected back to pending, but not from draft
   const canRevert = (currentStage === 'approved' || currentStage === 'rejected');
-
 
   // Helper for date formatting
   const formatDate = (dateString) => {
       const date = dateString ? parseISO(dateString) : null;
-      return date && isValid(date) ? format(date, 'MMM d, yyyy, h:mm a') : 'N/A'; // Adjusted format slightly
+      return date && isValid(date) ? format(date, 'MMM d, yyyy, h:mm a') : 'N/A';
   }
 
   // --- Render Logic ---
@@ -179,10 +215,27 @@ export default function SubmissionDetails() {
   }
 
   // Destructure after checks
-  const { user, amount, fields, created_at, updated_at, stage, loan } = submission;
+  const { user, amount, fields, created_at, updated_at, stage, loan, requiredDocumentRefs } = submission;
+
+
+  // console.log(requiredDocumentRefs);
+  // Combine fields for display
+   const allFieldsToDisplay = [
+      { field_id: '_applicant', field_label: 'Applicant Name', value: submission.user_id?.name || 'N/A', type: 'text', icon: User },
+      { field_id: '_account', field_label: 'Account #', value: submission.user_id?.account_number || 'N/A', type: 'text', icon: Hash },
+      { field_id: '_amount', field_label: 'Amount Requested', value: `₹${amount?.toLocaleString('en-IN') || 'N/A'}`, type: 'currency', icon: DollarSign },
+      { field_id: '_stage', field_label: 'Current Stage', value: STAGE_LABELS[stage] || stage, type: 'stage', stage: stage, icon: FileText },
+      { field_id: '_submitted', field_label: 'Submitted On', value: formatDate(created_at), type: 'datetime', icon: Calendar },
+      { field_id: '_updated', field_label: 'Last Updated', value: formatDate(updated_at), type: 'datetime', icon: Clock },
+      ...(fields || []),
+      ...(requiredDocumentRefs || []).map(docRef => ({
+          field_id: `reqDoc_${docRef.documentName}`, field_label: docRef.documentName,
+          value: docRef.fileRef, type: 'image', fileRef: docRef.fileRef
+      }))
+  ];
 
   return (
-    <Container fluid className="p-3 p-md-4 submission-details-page">
+    <Container fluid className="p-3 p-md-4 submission-details-page-v2">
         {/* Header Row */}
         <Row className="mb-4 align-items-center page-header">
             <Col xs="auto"> <Button variant="outline-secondary" size="sm" onClick={() => navigate(-1)} className="back-button d-inline-flex align-items-center"> <ArrowLeft size={16} className="me-1" /> Back </Button> </Col>
@@ -191,78 +244,58 @@ export default function SubmissionDetails() {
                 {loan?.title && <span className="text-muted d-block small">For Loan: {loan.title} (ID: {loan._id})</span>}
             </Col>
              {/* Display API errors related to actions */}
-             {error && submission && ( <Col xs={12} className="mt-2"> <Alert variant="danger" size="sm" onClose={() => setError(null)} dismissible> {error} </Alert> </Col> )}
+             {error && submission && ( <Col xs={12} className="mt-2"> <Alert variant="danger" size="sm" onClose={() => setError(null)} dismissible className="action-error-alert"> {error} </Alert> </Col> )}
         </Row>
 
-        {/* Overview Card */}
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-            <Card className="mb-4 shadow-sm overview-card">
-                <Card.Header className="bg-light">Submission Overview</Card.Header>
-                <Card.Body> <Row>
-                    <Col md={6} className="mb-3 mb-md-0"> <ListGroup variant="flush">
-                        {/* Added me-2 to icons */}
-                        <ListGroup.Item className="d-flex justify-content-between align-items-start px-0"> <div className="ms-2 me-auto"> <div className="fw-bold"><User size={14} className="me-2 text-secondary"/>Applicant</div> {user?.name || <span className="text-muted fst-italic">N/A</span>} </div> </ListGroup.Item>
-                        <ListGroup.Item className="d-flex justify-content-between align-items-start px-0"> <div className="ms-2 me-auto"> <div className="fw-bold"><Hash size={14} className="me-2 text-secondary"/>Account #</div> {user?.account_number || <span className="text-muted fst-italic">N/A</span>} </div> </ListGroup.Item>
-                        <ListGroup.Item className="d-flex justify-content-between align-items-start px-0"> <div className="ms-2 me-auto"> <div className="fw-bold"><DollarSign size={14} className="me-2 text-secondary"/>Amount Requested</div> ₹{amount?.toLocaleString('en-IN') || <span className="text-muted fst-italic">N/A</span>} </div> </ListGroup.Item>
-                    </ListGroup> </Col>
-                    <Col md={6}> <ListGroup variant="flush">
-                        {/* Added me-2 to icons */}
-                        <ListGroup.Item className="d-flex justify-content-between align-items-start px-0"> <div className="ms-2 me-auto"> <div className="fw-bold"><FileText size={14} className="me-2 text-secondary"/>Current Stage</div> <Badge bg={stageVariants[stage] || 'light'} text={stageTextEmphasis[stage] || 'dark'} className="stage-badge"> {getStatusIcon(stage)} {STAGE_LABELS[stage] || stage} </Badge> </div> </ListGroup.Item>
-                        <ListGroup.Item className="d-flex justify-content-between align-items-start px-0"> <div className="ms-2 me-auto"> <div className="fw-bold"><Calendar size={14} className="me-2 text-secondary"/>Submitted</div> {formatDate(created_at)} </div> </ListGroup.Item>
-                        <ListGroup.Item className="d-flex justify-content-between align-items-start px-0"> <div className="ms-2 me-auto"> <div className="fw-bold"><Clock size={14} className="me-2 text-secondary"/>Last Updated</div> {formatDate(updated_at)} </div> </ListGroup.Item>
-                    </ListGroup> </Col>
-                </Row> </Card.Body>
+        {/* Main Content Card */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            <Card className="mb-4 shadow-sm details-card">
+                <Card.Header as="h5" className="card-header-title d-flex justify-content-between align-items-center">
+                    <span>Applicant Information & Status</span>
+                     <Badge pill bg={stageVariants[stage] || 'light'} text={stageTextEmphasis[stage] || 'dark'} className="stage-badge-header">
+                        {getStatusIcon(stage)} {STAGE_LABELS[stage] || stage}
+                    </Badge>
+                </Card.Header>
+                <Card.Body>
+                    {/* Using Table for Key-Value Display */}
+                    <div className="table-responsive">
+                        <Table borderless hover className="details-table mb-0">
+                            <tbody>
+                                {allFieldsToDisplay.map((f) => (
+                                    <tr key={f.field_id}>
+                                        {/* Label Column */}
+                                        <th style={{ width: '30%' }}>
+                                            {/* Optionally add icon from field definition */}
+                                            {f.icon && React.createElement(f.icon, { size: 14, className: "me-2 text-secondary" })}
+                                            {f.field_label}
+                                        </th>
+                                        {/* Value Column */}
+                                        <td>
+                                            {f.type === 'image' ? ( <ImageLoader imageId={f.fileRef || f.value} alt={f.field_label} /> )
+                                            : f.type === 'document' ? ( (f.fileRef || f.value) ? <a href={`/api/image/${f.fileRef || f.value}`} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center">View Document <FileText size={14} className="ms-1"/></a> : <span className="text-muted fst-italic">No document</span> )
+                                            : f.type === 'checkbox' ? ( f.value ? <Badge bg="success-subtle" text="success-emphasis">Yes</Badge> : <Badge bg="secondary-subtle" text="secondary-emphasis">No</Badge> )
+                                            : f.type === 'stage' ? ( // Special handling for stage row (already shown in header/footer) - could be omitted or styled differently
+                                                 <Badge pill bg={stageVariants[f.stage] || 'light'} text={stageTextEmphasis[f.stage] || 'dark'} className="stage-badge-table"> {getStatusIcon(f.stage)} {f.value} </Badge>
+                                            ) : ( <span className="field-value">{f.value ?? <span className="text-muted fst-italic">N/A</span>}</span> )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </Table>
+                    </div>
+                </Card.Body>
+                 {/* Action Buttons Footer */}
+                 {(canApprove || canReject || canRevert) && (
+                    <Card.Footer className="text-end bg-light action-footer">
+                         <ButtonGroup size="sm">
+                            {canRevert && ( <Button onClick={() => handleChangeStage('pending')} disabled={actionInProgress} variant="outline-secondary" className="action-button d-inline-flex align-items-center"> {actionInProgress ? <Spinner as="span" animation="border" size="sm" className="me-1" /> : <RotateCcw size={16} className="me-1"/>} Revert to Pending </Button> )}
+                            {canReject && ( <Button onClick={() => handleChangeStage('rejected')} disabled={actionInProgress} variant="outline-danger" className="action-button d-inline-flex align-items-center"> {actionInProgress ? <Spinner as="span" animation="border" size="sm" className="me-1" /> : <XCircle size={16} className="me-1"/>} Reject </Button> )}
+                            {canApprove && ( <Button onClick={() => handleChangeStage('approved')} disabled={actionInProgress} variant="success" className="action-button d-inline-flex align-items-center"> {actionInProgress ? <Spinner as="span" animation="border" size="sm" className="me-1" /> : <CheckCircle size={16} className="me-1"/>} Approve </Button> )}
+                         </ButtonGroup>
+                    </Card.Footer>
+                 )}
             </Card>
         </motion.div>
-
-        {/* Field Responses Card */}
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1 }}>
-            <Card className="mb-4 shadow-sm fields-card">
-                <Card.Header className="bg-light">Field Responses</Card.Header>
-                <Card.Body className="p-0"> <div className="table-responsive">
-                    <Table hover className="response-table align-middle mb-0">
-                        <thead className="table-light"> <tr> <th style={{ width: '35%' }}>Field Label</th> <th>Submitted Value</th> </tr> </thead>
-                        <tbody>
-                            {fields && fields.length > 0 ? fields.map((f) => (
-                                <tr key={f.field_id}>
-                                    <td className="fw-medium">{f.field_label || <span className="text-muted fst-italic">No Label</span>}</td>
-                                    <td>
-                                        {f.type === 'image' ? ( <ImageLoader imageId={f.value} alt={f.field_label} /> )
-                                        : f.type === 'document' ? ( f.value ? <a href={`/api/document/${f.value}`} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center">View Document <FileText size={14} className="ms-1"/></a> : <span className="text-muted fst-italic">No document</span> ) // Added d-inline-flex
-                                        : f.type === 'checkbox' ? ( f.value ? <Badge bg="success-subtle" text="success-emphasis">Yes</Badge> : <Badge bg="secondary-subtle" text="secondary-emphasis">No</Badge> )
-                                        : ( <span className="field-value">{f.value || <span className="text-muted fst-italic">N/A</span>}</span> )}
-                                    </td>
-                                </tr>
-                            )) : ( <tr><td colSpan={2} className="text-center text-muted p-4">No field responses available.</td></tr> )}
-                        </tbody>
-                    </Table>
-                </div> </Card.Body>
-            </Card>
-        </motion.div>
-
-        {/* Action Buttons - Conditional Rendering */}
-        {(canApprove || canReject || canRevert) && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.2 }} className="text-end mt-3 action-footer">
-                 <ButtonGroup size="sm">
-                    {canRevert && (
-                         <Button onClick={() => handleChangeStage('pending')} disabled={actionInProgress} variant="outline-secondary" className="action-button d-inline-flex align-items-center">
-                            {actionInProgress ? <Spinner as="span" animation="border" size="sm" className="me-1" /> : <RotateCcw size={16} className="me-1"/>} Revert to Pending
-                        </Button>
-                    )}
-                     {canReject && (
-                         <Button onClick={() => handleChangeStage('rejected')} disabled={actionInProgress} variant="outline-danger" className="action-button d-inline-flex align-items-center mr-2">
-                            {actionInProgress ? <Spinner as="span" animation="border" size="sm" className="me-1" /> : <XCircle size={16} className="me-1"/>} Reject
-                        </Button>
-                    )}
-                    {canApprove && (
-                        <Button onClick={() => handleChangeStage('approved')} disabled={actionInProgress} variant="success" className="action-button d-inline-flex align-items-center">
-                             {actionInProgress ? <Spinner as="span" animation="border" size="sm" className="me-1" /> : <CheckCircle size={16} className="me-1"/>} Approve
-                        </Button>
-                    )}
-                 </ButtonGroup>
-            </motion.div>
-        )}
     </Container>
   );
 }
-

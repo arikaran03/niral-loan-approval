@@ -12,7 +12,7 @@ import userRoutes from "./routes/user.routes.js";
 import adminUserRoutes from "./routes/adminUser.routes.js";
 import loanRoutes from "./routes/loan.routes.js";
 import loanSubmissionRoutes from "./routes/loanSubmission.routes.js";
-import imageRoutes from "./routes/image.routes.js";
+import imageRoutes from "./routes/Image.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import openAIRoutes from "./routes/openai.routes.js";
 
@@ -49,7 +49,8 @@ app.use(cookieParser());
 // CORS configuration
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://h08bsvj6-3000.inc1.devtunnels.ms"
+  "https://h08bsvj6-3000.inc1.devtunnels.ms",
+  "https://docusift-groove.vercel.app",
 ];
 
 app.use(cors({
@@ -109,7 +110,13 @@ app.use('/api/application', openAIRoutes);
 // Global error handler (catches both express-jwt errors and any thrown below)
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Server started on port ${PORT}`);
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send("Something broke!");
 });
+
+const PORT = process.env.PORT || 3001;
+// app.listen(PORT, () => {
+//   console.log(`Server started on port ${PORT}`);
+// });
+export default app;

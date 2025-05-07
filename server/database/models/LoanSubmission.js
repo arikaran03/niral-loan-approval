@@ -1,69 +1,124 @@
 // src/models/LoanSubmission.js
 import mongoose from 'mongoose';
 
-// Schema for individual field responses
+// Assume 'Image' model stores file metadata (_id, filename, contentType, path/buffer, uploadedBy, etc.)
+// import Image from './Image';
+
+// --- Subdocument Schemas ---
+
+// Schema for CUSTOM field responses (from Loan.fields)
 const submissionFieldSchema = new mongoose.Schema({
-  field_id:    { type: String, required: true },
-  field_label: { type: String, required: true },
-  // allow strings, numbers, dates, or ObjectId refs for images
-  value:       { type: mongoose.Schema.Types.Mixed, required: true },
-  type: {
+  field_id:    { type: String, required: true }, // Matches field_id from Loan schema's fields array
+  field_label: { type: String, required: true }, // Label at the time of submission
+  type: {                                       // Data type defined in the Loan schema's field
     type: String,
-    enum: ['image','text','number','date','datetime','time'],
+    enum: ['image', 'document', 'text', 'number', 'date', 'datetime', 'time', 'textarea', 'select', 'checkbox', 'multiselect'],
     required: true
+  },
+  // Value for non-file types (text, number, date, boolean, selected option(s))
+  value: {
+    type: mongoose.Schema.Types.Mixed,
+    required: function() { return this.type !== 'image' && this.type !== 'document'; }
+  },
+  // Reference to the uploaded file IF this custom field is of type 'image' or 'document'
+  fileRef: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Image', // *** CHANGE 'Image' TO YOUR ACTUAL FILE MODEL NAME ***
+    required: function() { return this.type === 'image' || this.type === 'document'; }
   }
 }, { _id: false });
 
-// Stage history entries
+// Schema for linking REQUIRED documents (from Loan.required_documents) to their uploaded files
+const requiredDocumentRefSchema = new mongoose.Schema({
+    documentName: { // The 'name' of the required document (e.g., "PAN Card")
+        type: String,
+        required: true
+    },
+    fileRef: { // The ObjectId referencing the uploaded file in the 'Image'/'Document' collection
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Image', // *** CHANGE 'Image' TO YOUR ACTUAL FILE MODEL NAME ***
+        required: true
+    },
+    // Optional: Add status related to this specific document upload/verification if needed
+    // verificationStatus: { type: String, enum: ['pending', 'verified', 'failed'] },
+    // verifiedAt: Date,
+}, { _id: false });
+
+
+// Stage history entries (Schema remains the same)
 const stageHistorySchema = new mongoose.Schema({
   stage:      { type: String, enum: ['draft','pending','approved','rejected'], required: true },
   changed_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   changed_at: { type: Date, default: Date.now }
 }, { _id: false });
 
-// Main loan submission schema
-const LoanSubmission = new mongoose.Schema({
-  loan_id:    { type: mongoose.Schema.Types.ObjectId, ref: 'Loan', required: true },
-  user_id:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-
+// --- Main Loan Submission Schema ---
+const LoanSubmissionSchema = new mongoose.Schema({
+  loan_id:    { type: mongoose.Schema.Types.ObjectId, ref: 'Loan', required: true, index: true },
+  user_id:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   amount:     { type: Number, required: true, min: 0 },
   stage: {
     type: String,
     enum: ['draft','pending','approved','rejected'],
-    default: 'draft'
+    default: 'draft',
+    index: true
   },
-  // Keep all responses in an array
+  // Responses for CUSTOM fields defined in Loan.fields
   fields: {
     type: [submissionFieldSchema],
-    required: true,
-    validate: fields => Array.isArray(fields) && fields.length > 0
+    // Not strictly required if a loan has no custom fields, but the array should exist
+    default: []
   },
-
-  // History of stage changes
-  history: {
-    type: [stageHistorySchema],
+  // *** NEW FIELD: References for STANDARD required documents ***
+  requiredDocumentRefs: {
+    type: [requiredDocumentRefSchema],
+    // This array should contain one entry for each document listed in Loan.required_documents
+    // Validation that all required docs are present might happen in controller or pre-save hook
     default: []
   },
 
-  // Optional approver and comments
-  approver_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  approval_date:    { type: Date },
+  history: { type: [stageHistorySchema], default: [] },
+  approver_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  approval_date: { type: Date },
   rejection_reason: { type: String },
 
 }, {
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 });
 
-// Pre-save: push initial history entry if new
-LoanSubmission.pre('save', function(next) {
-  if (this.isNew) {
+// --- Middleware ---
+LoanSubmissionSchema.pre('save', function(next) {
+  // Add initial history entry
+  if (this.isNew && this.history.length === 0) {
+    this.history = this.history || [];
     this.history.push({
-      stage: this.stage,
+      stage: this.stage || 'draft',
       changed_by: this.user_id,
-      changed_at: this.created_at
+      changed_at: new Date()
     });
   }
-  next();
+
+  // Optional: Add validation to ensure all required documents have references upon moving to 'pending'
+  if (this.isModified('stage') && this.stage === 'pending') {
+     mongoose.model('Loan').findById(this.loan_id).select('required_documents').then(loan => {
+         if (!loan) return next(new Error('Associated Loan definition not found for validation.'));
+
+         const requiredDocNames = loan.required_documents.map(doc => doc.name);
+         const submittedDocNames = this.requiredDocumentRefs.map(ref => ref.documentName);
+         const missingDocs = requiredDocNames.filter(name => !submittedDocNames.includes(name));
+
+         if (missingDocs.length > 0) {
+             return next(new Error(`Missing required document uploads: ${missingDocs.join(', ')}`));
+         }
+         next();
+     }).catch(err => next(err));
+  } else {
+      next();
+  }
 });
 
-export default mongoose.model('LoanSubmission', LoanSubmission);
+
+// --- Indexes ---
+LoanSubmissionSchema.index({ user_id: 1, loan_id: 1 });
+
+export default mongoose.model('LoanSubmission', LoanSubmissionSchema);

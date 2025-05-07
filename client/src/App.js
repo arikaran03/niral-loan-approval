@@ -11,6 +11,8 @@ import SubmissionDetails from "./components/admin/SubmissionDetails";
 import LoanListPage from "./components/admin/LoanListPage";
 import Profile from "./components/Profile";
 import AdminDashboard from "./components/admin/AdminDashboard";
+import UserDashboard from "./components/applicant/UserDashboard";
+import ApplicationFullDetails from "./components/applicant/ApplicationFullDetails";
 
 function App() {
   return (
@@ -28,6 +30,8 @@ function App() {
 
         <Route path="/" element={<PrivateRoute />}>
           <Route path="" element={<AvailableLoans />} />
+          <Route path="dashboard" element={<UserDashboard />} />
+          <Route path="applications/:submissionId" element={<ApplicationFullDetails />} />
           <Route path="/apply/:loanId" element={<ApplicationForm />} />
         </Route>
         <Route path="/profile" element={<PrivateRoute />}>

@@ -14,10 +14,8 @@ import './LoanFormBuilder.css';
 
 // --- Configs & Helpers ---
 const PREDEFINED_DOCUMENTS = {
-    aadhaar: { label: 'Aadhaar Card', fields: [ { key: 'name', label: 'Full Name'}, { key: 'dob', label: 'Date of Birth'}, { key: 'aadhaar_number', label: 'Aadhaar Number'}, { key: 'address', label: 'Address'} ] },
-    pan_card: { label: 'PAN Card', fields: [ { key: 'name', label: 'Full Name'}, { key: 'pan_number', label: 'PAN Number'}, { key: 'father_name', label: 'Father\'s Name'} ] },
-    smart_card: { label: 'Smart Card (e.g., Driving License)', fields: [ { key: 'name', label: 'Full Name'}, { key: 'dob', label: 'Date of Birth'}, { key: 'card_number', label: 'Card Number'}, { key: 'valid_until', label: 'Valid Until'} ] },
-    bank_statement: { label: 'Bank Statement', fields: [ { key: 'account_number', label: 'Account Number'}, { key: 'ifsc_code', label: 'IFSC Code'}, { key: 'balance', label: 'Closing Balance'}, { key: 'statement_period', label: 'Statement Period'} ] }
+    aadhaar: { label: 'Aadhaar Card', fields: [ { key: 'name', label: 'Full Name'}, { key: 'dob', label: 'Date of Birth'}, { key: 'aadhaar_number', label: 'Aadhaar Number'}] },
+    pan_card: { label: 'PAN Card', fields: [ { key: 'name', label: 'Full Name'}, { key: 'pan_number', label: 'PAN Number'}, { key: 'father_name', label: 'Father\'s Name'} ] }
 };
 const generateDocumentDescription = (docKey) => { if (!PREDEFINED_DOCUMENTS[docKey]) return ''; const fields = PREDEFINED_DOCUMENTS[docKey].fields.map(f => f.label).join(', '); return `Expected Fields: ${fields}`; };
 const generateAutoFillOptions = () => { const opts = []; for (const dk in PREDEFINED_DOCUMENTS) { PREDEFINED_DOCUMENTS[dk].fields.forEach(f => opts.push({ value: `${dk}.${f.key}`, label: `${PREDEFINED_DOCUMENTS[dk].label} - ${f.label}`, key: f.key })); } return opts; };

@@ -5,6 +5,7 @@ import {
   getMyProfile,
   updateMyProfile
 } from '../controllers/user.controller.js';
+import { getMySubmissions } from '../controllers/loanSubmission.controller.js';
 
 const router = Router();
 
@@ -12,5 +13,9 @@ const router = Router();
 // PATCH /api/user/me       -> Update profile (name, mpin)
 router.get('/me', getMyProfile);
 router.patch('/me', updateMyProfile);
+router.get(
+  '/my-submissions',
+  getMySubmissions
+);
 
 export default router;
