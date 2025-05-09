@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import PropTypes from 'prop-types';
-import { axiosInstance } from '../../config'; // Adjust path
+import { axiosInstance } from '../../../config'; // Adjust path
 import {
   Container,
   Card,

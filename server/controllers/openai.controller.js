@@ -204,7 +204,7 @@ If you are unsure about the document type, use "other" as the value for "doc_nam
 
       // 4. Call OpenAI API
       const response = await openai.chat.completions.create({
-        model: "gpt-4o", // Use the latest model like gpt-4o
+        model: "gpt-4.1", // Use the latest model like gpt-4o
         messages: [
           { role: "system", content: systemPrompt },
           {

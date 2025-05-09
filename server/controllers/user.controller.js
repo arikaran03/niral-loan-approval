@@ -38,3 +38,15 @@ export async function updateMyProfile(req, res) {
     return res.status(400).json({ error: err.message });
   }
 }
+
+export async function getUserTypeAndName(req, res) {
+  try {
+    const user = await User.findById(req.user._id).select('type name');
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    return res.json({ type: user.type, name: user.name });
+  }
+  catch (err) {
+    console.error('getUserTypeAndName error', err);
+    return res.status(500).json({ error: 'Failed to fetch user type and name.' });
+  }
+}

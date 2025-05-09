@@ -119,7 +119,7 @@ const UserDashboard = () => {
                     </h1>
                 </Col>
                  <Col xs="auto">
-                    <Link to="/apply"> {/* Link to start a new application */}
+                    <Link to="/"> {/* Link to start a new application */}
                         <Button variant="primary" size="sm" className="create-button">
                             <FaPlus className="me-1" /> Apply for New Loan
                         </Button>
@@ -135,7 +135,7 @@ const UserDashboard = () => {
             {submissions.length === 0 && !loading && !error && (
                  <Alert variant="info" className="text-center shadow-sm">
                     <FaInfoCircle className="me-2"/> You haven't applied for any loans yet.
-                    <Link to="/apply" className="alert-link ms-2">Apply Now!</Link>
+                    <Link to="/" className="alert-link ms-2">Apply Now!</Link>
                  </Alert>
             )}
 

@@ -15,6 +15,7 @@ import loanSubmissionRoutes from "./routes/loanSubmission.routes.js";
 import imageRoutes from "./routes/Image.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import openAIRoutes from "./routes/openai.routes.js";
+import { applicantRepaymentRoutes, adminRepaymentRoutes } from './routes/loanRepayment.routes.js';
 
 mongodbConnect();
 
@@ -107,6 +108,10 @@ app.use("/api/admin", adminRoutes);
 
 app.use('/api/application', openAIRoutes);
 
+app.use('/api/repayments', applicantRepaymentRoutes); // For applicant-facing endpoints
+
+app.use('/api/admin/repayments', adminRepaymentRoutes); // For admin-facing endpoints
+
 // Global error handler (catches both express-jwt errors and any thrown below)
 app.use(errorHandler);
 
@@ -116,7 +121,7 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3001;
-// app.listen(PORT, () => {
-//   console.log(`Server started on port ${PORT}`);
-// });
-export default app;
+app.listen(PORT, () => {
+  console.log(`Server started on port ${PORT}`);
+});
+// export default app;

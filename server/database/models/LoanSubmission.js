@@ -45,9 +45,14 @@ const requiredDocumentRefSchema = new mongoose.Schema({
 }, { _id: false });
 
 
-// Stage history entries (Schema remains the same)
+// Stage history entries
 const stageHistorySchema = new mongoose.Schema({
-  stage:      { type: String, enum: ['draft','pending','approved','rejected'], required: true },
+  stage:      {
+    type: String,
+    // MODIFIED: Added 'paid_to_applicant'
+    enum: ['draft', 'pending', 'approved', 'rejected', 'paid_to_applicant'],
+    required: true
+  },
   changed_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   changed_at: { type: Date, default: Date.now }
 }, { _id: false });
@@ -59,7 +64,8 @@ const LoanSubmissionSchema = new mongoose.Schema({
   amount:     { type: Number, required: true, min: 0 },
   stage: {
     type: String,
-    enum: ['draft','pending','approved','rejected'],
+    // MODIFIED: Added 'paid_to_applicant'
+    enum: ['draft', 'pending', 'approved', 'rejected', 'paid_to_applicant'],
     default: 'draft',
     index: true
   },
@@ -69,7 +75,7 @@ const LoanSubmissionSchema = new mongoose.Schema({
     // Not strictly required if a loan has no custom fields, but the array should exist
     default: []
   },
-  // *** NEW FIELD: References for STANDARD required documents ***
+  // References for STANDARD required documents
   requiredDocumentRefs: {
     type: [requiredDocumentRefSchema],
     // This array should contain one entry for each document listed in Loan.required_documents
@@ -81,6 +87,8 @@ const LoanSubmissionSchema = new mongoose.Schema({
   approver_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   approval_date: { type: Date },
   rejection_reason: { type: String },
+  // Optional: You might want a specific date for when payment was made
+  // payment_date: { type: Date },
 
 }, {
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
@@ -88,18 +96,37 @@ const LoanSubmissionSchema = new mongoose.Schema({
 
 // --- Middleware ---
 LoanSubmissionSchema.pre('save', function(next) {
-  // Add initial history entry
-  if (this.isNew && this.history.length === 0) {
-    this.history = this.history || [];
-    this.history.push({
-      stage: this.stage || 'draft',
-      changed_by: this.user_id,
-      changed_at: new Date()
-    });
+  // Add initial history entry or update history on stage change
+  if (this.isNew || this.isModified('stage')) {
+    if (this.isNew && this.history.length === 0) { // Only for absolutely new documents without history
+        this.history = []; // Ensure history is an array
+        this.history.push({
+            stage: this.stage || 'draft', // Use current stage or default to draft
+            changed_by: this.user_id, // Assuming user_id is set at this point for new docs
+            changed_at: new Date()
+        });
+    } else if (this.isModified('stage')) { // For existing documents where stage is modified
+        // Ensure changed_by is available. It might need to be explicitly set before saving
+        // if the user_id on the document isn't necessarily the one making the stage change.
+        // For simplicity, using this.user_id or a placeholder if not available.
+        const changer = this.changed_by_user_id_for_stage_change || this.user_id; // You might need a transient field
+        if (!changer) {
+            // Handle cases where the changer is not identified; perhaps log or skip history
+            // For now, let's proceed but ideally, this should be robustly handled.
+        }
+        this.history.push({
+            stage: this.stage,
+            changed_by: changer, // This should be the ID of the user who made this specific stage change
+            changed_at: new Date()
+        });
+    }
   }
+
 
   // Optional: Add validation to ensure all required documents have references upon moving to 'pending'
   if (this.isModified('stage') && this.stage === 'pending') {
+     // Ensure this.loan_id is populated if it's a ref. If not, you might need to load it.
+     // If loan_id is just an ObjectId and not populated, this works.
      mongoose.model('Loan').findById(this.loan_id).select('required_documents').then(loan => {
          if (!loan) return next(new Error('Associated Loan definition not found for validation.'));
 
