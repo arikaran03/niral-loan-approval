@@ -12,7 +12,7 @@ const DB_NAME = process.env.DB_NAME;
 const SENDER_EMAIL = process.env.SENDER_EMAIL;
 const SENDER_PASSWORD = process.env.SENDER_PASSWORD;
 const SMTP_SERVER = process.env.SMTP_SERVER; // smtp.gmail.com 
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10); // 585 or 645
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10); // Default is 587. Use 585 or 645 if required by your SMTP server.
 
 export {
     MONGODB_URL,
