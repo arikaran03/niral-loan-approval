@@ -1,7 +1,5 @@
 import {SENDER_EMAIL, SENDER_PASSWORD, SMTP_SERVER, SMTP_PORT} from './config.js';
-
-const nodemailer = require('nodemailer');
-
+import nodemailer from 'nodemailer';
 
 async function sendConfiguredEmail(mailDetails) {
     // --- SMTP Configuration (loaded from .env or defaults) ---
@@ -23,7 +21,7 @@ async function sendConfiguredEmail(mailDetails) {
         // debug: true,  // Enable for debugging SMTP communication
     };
 
-    if (SMTP_PORT !== 465) {
+    if (smtpPort !== 465) {
         transporterConfig.tls = {
             // ciphers: 'SSLv3', // Use if your server requires specific ciphers
             rejectUnauthorized: false // Set to true in production with valid certs. False for self-signed/dev.
@@ -47,11 +45,9 @@ async function sendConfiguredEmail(mailDetails) {
         }
     });
 
-
     if (!mailDetails || !mailDetails.to || !mailDetails.subject || !mailDetails.htmlBody) {
         throw new Error("Missing required email parameters: to, subject, or htmlBody.");
     }
-
     // Basic plain text generation if not provided
     const plainText = mailDetails.plainTextBody || mailDetails.htmlBody.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -78,4 +74,4 @@ async function sendConfiguredEmail(mailDetails) {
     }
 }
 
-module.exports = { sendConfiguredEmail };
+export { sendConfiguredEmail };
