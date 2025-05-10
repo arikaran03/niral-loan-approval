@@ -40,9 +40,9 @@ const PREDEFINED_DOCUMENTS = {
   aadhaar: {
     label: "Aadhaar Card",
     fields: [
-      { key: "name", label: "Full Name" },
-      { key: "dob", label: "Date of Birth" },
-      { key: "aadhaar_number", label: "Aadhaar Number" },
+      { key: "name", label: "Full Name", prompt: "String, Full name with Initial" },
+      { key: "dob", label: "Date of Birth", prompt: "Date, Date of Birth, format: YYYY:MM:DD" },
+      { key: "aadhaar_number", label: "Aadhaar Number", prompt: "String, 12 digit Aadhaar Number" },
     ],
   },
   pan_card: {

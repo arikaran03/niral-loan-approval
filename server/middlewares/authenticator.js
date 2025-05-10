@@ -12,34 +12,36 @@ function validateEmail(email) {
 
 export const login = async (req, res) => {
   const { email, password } = req.body;
+  const lowerEmail = email ? email.toLowerCase() : null; // Normalize email
 
   // 1) Validate inputs
-  if (!email || !password) {
+  if (!lowerEmail || !password) { // Use lowerEmail
     return res.status(400).json({ error: 'Email and password are required.' });
   }
-  if (!validateEmail(email)) {
+  if (!validateEmail(lowerEmail)) { // Use lowerEmail
     return res.status(400).json({ error: 'Invalid email format.' });
   }
 
   try {
-    // 2) Find user
-    const user = await User.findOne({ email });
+
+    console.log('Login attempt with email:', lowerEmail);
+    // 2) Find user using normalized email
+    const user = await User.findOne({ email: lowerEmail });
     if (!user) {
-      // do not reveal which one failed
       return res.status(400).json({ error: 'Invalid email or password.' });
     }
 
-    // 3) Check password
+    console.log('User found:', user);
+
+    // ... rest of the function remains the same
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ error: 'Invalid email or password.' });
     }
 
-    // 4) Issue JWT (only include minimal payload)
-    const payload = { id: user._id, email: user.email, type: user.type };
+    const payload = { id: user._id, email: user.email, type: user.type }; // user.email will be the lowercase email from DB
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1d' });
 
-    // 5) Return token and basic user info
     return res.status(200).json({
       token,
       user: {
@@ -58,12 +60,14 @@ export const login = async (req, res) => {
 
 export const register = async (req, res) => {
   const { name, email, password } = req.body;
+  const lowerEmail = email ? email.toLowerCase() : null; // Normalize email
 
   // 1) Validate inputs
   if (!name || name.length < 2 || name.length > 50) {
     return res.status(400).json({ error: 'Name must be between 2 and 50 characters.' });
   }
-  if (!email || !validateEmail(email)) {
+  // Use lowerEmail for validation and operations
+  if (!lowerEmail || !validateEmail(lowerEmail)) {
     return res.status(400).json({ error: 'Invalid email format.' });
   }
   if (!password || password.length < 8) {
@@ -71,19 +75,19 @@ export const register = async (req, res) => {
   }
 
   try {
-    // 2) Check for existing user
-    const existing = await User.findOne({ email });
+    // 2) Check for existing user using normalized email
+    const existing = await User.findOne({ email: lowerEmail });
     if (existing) {
       return res.status(400).json({ error: 'Email already registered. Please log in.' });
     }
 
-    // 3) Hash password & create user
+    // 3) Hash password & create user with normalized email
     const hashed = await bcrypt.hash(password, 10);
-    const newUser = new User({ name, email, password: hashed });
+    const newUser = new User({ name, email: lowerEmail, password: hashed }); // Store lowercase email
     await newUser.save();
 
     // 4) (Optional) Auto-login: issue JWT
-    const payload = { id: newUser._id, email: newUser.email, type: newUser.type };
+    const payload = { id: newUser._id, email: newUser.email, type: newUser.type }; // newUser.email is already lowercase
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1d' });
 
     return res.status(201).json({
@@ -92,14 +96,13 @@ export const register = async (req, res) => {
       user: {
         id: newUser._id,
         name: newUser.name,
-        email: newUser.email,
+        email: newUser.email, // This will be the lowercase email
         account_number: newUser.account_number,
         type: newUser.type
       }
     });
   } catch (err) {
     console.error('Error during registration:', err);
-    // handle unique constraint error
     if (err.code === 11000 && err.keyPattern?.email) {
       return res.status(400).json({ error: 'Email already exists.' });
     }

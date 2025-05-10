@@ -1,73 +1,33 @@
 // src/components/applicant/repayments/LoanRepaymentDetailPage.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Container, Card, Row, Col, Table, Button, Spinner, Alert, Badge, Modal, Form, InputGroup, ListGroup } from 'react-bootstrap';
-import { ArrowLeft, Calendar, CheckCircle, XCircle, Info, FileText, DollarSign as DollarSignIcon, CreditCard, Landmark, Download, ExternalLink, MessageSquare, Quote, ShieldCheck, ShieldX, Hourglass, AlertTriangle } from 'lucide-react';
-// Import helper functions from your utility file
-import { formatCurrency, formatDate, getStatusBadgeVariant, getInstallmentStatusBadgeVariant } from '../../../utils/formatters'; // Adjust path if needed
-// Placeholder for your API call function
-// import { axiosInstance } from '../../../config'; // Adjust path as needed
+import { ArrowLeft, Calendar, CheckCircle, XCircle, Info, FileText, DollarSign as DollarSignIcon, CreditCard, Landmark, MessageSquare, Quote, ShieldCheck, ShieldX, Hourglass, AlertTriangle, Send } from 'lucide-react';
+import { formatCurrency, formatDate, getStatusBadgeVariant, getInstallmentStatusBadgeVariant } from '../../../utils/formatters'; 
+import { axiosInstance } from '../../../config'; 
 
-// Mock API call - replace with your actual API call
+// API call functions
 const fetchLoanRepaymentDetailsAPI = async (repaymentId) => {
-    // const response = await axiosInstance.get(`/api/repayments/${repaymentId}`);
-    // return response.data.data;
-    console.log("Fetching details for:", repaymentId);
-    return new Promise(resolve => setTimeout(() => resolve({
-        _id: repaymentId,
-        loan_id: { _id: 'loanABC', title: 'Personal Loan for Vacation', agreed_interest_rate_pa: 12.5, original_tenure_months: 24 },
-        loan_submission_id: { _id: 'submissionXYZ', amount: 50000, stage: 'Disbursed' },
-        user_id: 'user123',
-        disbursed_amount: 50000,
-        agreed_interest_rate_pa: 12.5,
-        original_tenure_months: 24,
-        initial_calculated_emi: 2365.89,
-        repayment_start_date: '2025-02-05T00:00:00.000Z',
-        original_expected_closure_date: '2027-01-05T00:00:00.000Z',
-        actual_closure_date: null,
-        scheduled_installments: [
-            { installment_number: 1, due_date: '2025-02-05T00:00:00.000Z', principal_due: 1849.22, interest_due: 516.67, total_emi_due: 2365.89, status: 'Paid', principal_paid: 1849.22, interest_paid: 516.67, penalty_paid: 0, last_payment_date_for_installment: '2025-02-04T00:00:00.000Z' },
-            { installment_number: 2, due_date: '2025-03-05T00:00:00.000Z', principal_due: 1868.43, interest_due: 497.46, total_emi_due: 2365.89, status: 'Paid', principal_paid: 1868.43, interest_paid: 497.46, penalty_paid: 0, last_payment_date_for_installment: '2025-03-03T00:00:00.000Z' },
-            { installment_number: 3, due_date: '2025-04-05T00:00:00.000Z', principal_due: 1887.83, interest_due: 478.06, total_emi_due: 2365.89, status: 'Pending', principal_paid: 0, interest_paid: 0, penalty_paid: 0 },
-            { installment_number: 4, due_date: '2025-05-05T00:00:00.000Z', principal_due: 1907.43, interest_due: 458.46, total_emi_due: 2365.89, status: 'Pending', principal_paid: 0, interest_paid: 0, penalty_paid: 0 },
-        ],
-        payment_transactions: [
-            { _id: 'txn1', transaction_date: '2025-02-04T00:00:00.000Z', amount_received: 2365.89, payment_method: 'UPI', reference_id: 'upi123', status: 'Cleared', principal_component: 1849.22, interest_component: 516.67 },
-            { _id: 'txn2', transaction_date: '2025-03-03T00:00:00.000Z', amount_received: 2365.89, payment_method: 'Bank Transfer', reference_id: 'neft456', status: 'Cleared', principal_component: 1868.43, interest_component: 497.46 },
-        ],
-        total_principal_repaid: 3717.65,
-        total_interest_repaid: 1014.13,
-        current_outstanding_principal: 46282.35,
-        next_due_date: '2025-04-05T00:00:00.000Z',
-        next_emi_amount: 2365.89,
-        loan_repayment_status: 'Active',
-        prepayment_configuration: { allow_prepayment: true, lock_in_period_months: 6, prepayment_fee_type: 'PercentageOfOutstandingPrincipal', prepayment_fee_value: 1 },
-        communication_log: [
-            { log_date: '2025-01-20T00:00:00.000Z', type: 'Email', subject: 'Loan Disbursement Confirmation', summary: 'Your loan has been disbursed.', status: 'Delivered'},
-            { log_date: '2025-03-28T00:00:00.000Z', type: 'SMS', summary: 'EMI Reminder: Your EMI of INR 2365.89 is due on 05-Apr-2025.', status: 'Sent'}
-        ]
-    }), 1200));
+    const response = await axiosInstance.get(`/api/repayments/${repaymentId}`);
+    return response.data.data; 
 };
 
 const makePaymentAPI = async (repaymentId, paymentData) => {
-    console.log("Making payment for:", repaymentId, "Data:", paymentData);
-    return new Promise(resolve => setTimeout(() => resolve({ success: true, message: "Payment initiated successfully. Awaiting confirmation.", data: { transactionId: 'txnNew123' } }), 1500));
+    const response = await axiosInstance.post(`/api/repayments/${repaymentId}/make-payment`, paymentData);
+    return response.data; 
 };
 
 const fetchForeclosureQuoteAPI = async (repaymentId) => {
-    console.log("Fetching foreclosure quote for:", repaymentId);
-    return new Promise(resolve => setTimeout(() => resolve({
-        repaymentId: repaymentId,
-        outstandingPrincipal: 46282.35,
-        accruedInterest: 150.75, 
-        foreclosureFee: 462.82, 
-        totalForeclosureAmount: 46895.92,
-        quoteValidUntil: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        notes: "This is an indicative quote."
-    }), 1000));
+    const response = await axiosInstance.get(`/api/repayments/${repaymentId}/foreclosure-quote`);
+    return response.data.data; 
 };
 
-// Helper for installment status icon (can also be moved to formatters.js if used elsewhere)
+const confirmForeclosureAPI = async (repaymentId, confirmationData) => {
+    const response = await axiosInstance.post(`/api/repayments/${repaymentId}/confirm-foreclosure`, confirmationData);
+    return response.data;
+};
+
+// Helper for installment status icon
 const getInstallmentStatusIconElement = (status) => {
     switch (status) {
         case 'Paid': return <CheckCircle size={16} className="text-success" />;
@@ -89,6 +49,7 @@ export default function LoanRepaymentDetailPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
+    // Payment Modal State
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentAmount, setPaymentAmount] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('UPI');
@@ -96,40 +57,52 @@ export default function LoanRepaymentDetailPage() {
     const [paymentError, setPaymentError] = useState('');
     const [paymentSuccess, setPaymentSuccess] = useState('');
 
-    const [showForeclosureModal, setShowForeclosureModal] = useState(false);
+    // Foreclosure Quote Modal State
+    const [showForeclosureQuoteModal, setShowForeclosureQuoteModal] = useState(false);
     const [foreclosureQuote, setForeclosureQuote] = useState(null);
     const [foreclosureLoading, setForeclosureLoading] = useState(false);
     const [foreclosureError, setForeclosureError] = useState('');
+
+    // Confirm Foreclosure Modal State
+    const [showConfirmForeclosureModal, setShowConfirmForeclosureModal] = useState(false);
+    const [foreclosurePaymentRef, setForeclosurePaymentRef] = useState('');
+    const [confirmForeclosureSubmitting, setConfirmForeclosureSubmitting] = useState(false);
+    const [confirmForeclosureError, setConfirmForeclosureError] = useState('');
+    const [confirmForeclosureSuccess, setConfirmForeclosureSuccess] = useState('');
     
-    useEffect(() => {
+    const loadDetails = useCallback(async () => { 
         if (!repaymentId) {
             setError("Repayment ID is missing.");
             setLoading(false);
             return;
         }
-        const loadDetails = async () => {
-            setLoading(true);
-            setError('');
-            try {
-                const data = await fetchLoanRepaymentDetailsAPI(repaymentId);
-                setRepaymentDetails(data);
-                setPaymentAmount(data?.next_emi_amount?.toString() || ''); 
-            } catch (err) {
-                setError(err.response?.data?.message || err.message || 'Failed to fetch repayment details.');
-                console.error("Fetch detail error:", err);
-            } finally {
-                setLoading(false);
+        setLoading(true);
+        setError('');
+        try {
+            const data = await fetchLoanRepaymentDetailsAPI(repaymentId);
+            setRepaymentDetails(data);
+            // Pre-fill payment amount only if it's not already focused for foreclosure payment
+            if (!showPaymentModal || paymentAmount === '') {
+                 setPaymentAmount(data?.next_emi_amount?.toString() || '');
             }
-        };
-        loadDetails();
-    }, [repaymentId]);
+        } catch (err) {
+            console.error("Fetch detail error:", err);
+            setError(err.response?.data?.message || err.message || 'Failed to fetch repayment details.');
+        } finally {
+            setLoading(false);
+        }
+    }, [repaymentId, showPaymentModal, paymentAmount]); // Added dependencies
 
-    const handleShowPaymentModal = () => {
+    useEffect(() => {
+        loadDetails();
+    }, [loadDetails]); // useEffect will call loadDetails
+
+    const handleShowPaymentModal = (amountToPay = null) => {
         setPaymentError('');
         setPaymentSuccess('');
-        // Pre-fill with next EMI if available and not zero
         const nextEmi = repaymentDetails?.next_emi_amount;
-        setPaymentAmount(nextEmi && nextEmi > 0 ? nextEmi.toString() : '');
+        setPaymentAmount(amountToPay ? amountToPay.toString() : (nextEmi && nextEmi > 0 ? nextEmi.toString() : ''));
+        setPaymentMethod('UPI'); // Reset to default
         setShowPaymentModal(true);
     };
     const handleClosePaymentModal = () => setShowPaymentModal(false);
@@ -147,27 +120,29 @@ export default function LoanRepaymentDetailPage() {
             const paymentData = {
                 amount: parseFloat(paymentAmount),
                 paymentMethod: paymentMethod,
+                // You might want to add a field for payment reference if user provides it
+                // referenceId: 'USER_PROVIDED_REF_IF_ANY' 
             };
             const response = await makePaymentAPI(repaymentId, paymentData);
             if (response.success) {
-                setPaymentSuccess(response.message || "Payment initiated!");
+                setPaymentSuccess(response.message || "Payment initiated successfully! Details will update shortly.");
                 setTimeout(() => {
                      setShowPaymentModal(false);
-                     // Refresh data after successful payment attempt
-                     fetchLoanRepaymentDetailsAPI(repaymentId).then(setRepaymentDetails);
-                }, 2000);
+                     loadDetails(); 
+                }, 2500);
             } else {
                 setPaymentError(response.message || "Payment initiation failed.");
             }
         } catch (err) {
+            console.error("Payment submission error:", err);
             setPaymentError(err.response?.data?.message || err.message || "An error occurred during payment.");
         } finally {
             setPaymentSubmitting(false);
         }
     };
 
-    const handleShowForeclosureModal = async () => {
-        setShowForeclosureModal(true);
+    const handleShowForeclosureQuoteModal = async () => {
+        setShowForeclosureQuoteModal(true);
         setForeclosureLoading(true);
         setForeclosureError('');
         setForeclosureQuote(null);
@@ -175,12 +150,64 @@ export default function LoanRepaymentDetailPage() {
             const quote = await fetchForeclosureQuoteAPI(repaymentId);
             setForeclosureQuote(quote);
         } catch (err) {
+            console.error("Foreclosure quote error:", err);
             setForeclosureError(err.response?.data?.message || err.message || "Failed to fetch foreclosure quote.");
         } finally {
             setForeclosureLoading(false);
         }
     };
-    const handleCloseForeclosureModal = () => setShowForeclosureModal(false);
+    const handleCloseForeclosureQuoteModal = () => setShowForeclosureQuoteModal(false);
+
+    const handleShowConfirmForeclosureModal = () => {
+        setConfirmForeclosureError('');
+        setConfirmForeclosureSuccess('');
+        setForeclosurePaymentRef('');
+        setShowConfirmForeclosureModal(true);
+    };
+    const handleCloseConfirmForeclosureModal = () => setShowConfirmForeclosureModal(false);
+
+    const handleConfirmForeclosureSubmit = async (e) => {
+        e.preventDefault();
+        if (!foreclosureQuote || !foreclosureQuote.totalForeclosureAmount) {
+            setConfirmForeclosureError("Foreclosure quote not available or invalid.");
+            return;
+        }
+         if (!foreclosurePaymentRef.trim()) {
+            setConfirmForeclosureError("Please enter the payment reference for the foreclosure amount.");
+            return;
+        }
+
+        setConfirmForeclosureSubmitting(true);
+        setConfirmForeclosureError('');
+        setConfirmForeclosureSuccess('');
+        try {
+            const confirmationData = {
+                paymentDetails: {
+                    amountPaid: foreclosureQuote.totalForeclosureAmount,
+                    transactionReference: foreclosurePaymentRef,
+                    paymentDate: new Date().toISOString(), // Assuming payment is made now
+                    paymentMethod: "Foreclosure Payment", // Or collect this
+                    foreclosureFeePaid: foreclosureQuote.foreclosureFee 
+                },
+                notes: "Applicant confirmed foreclosure payment."
+            };
+            const response = await confirmForeclosureAPI(repaymentId, confirmationData);
+            if (response.success) {
+                setConfirmForeclosureSuccess(response.message || "Foreclosure confirmed successfully! Loan details updated.");
+                setTimeout(() => {
+                     setShowConfirmForeclosureModal(false);
+                     loadDetails(); 
+                }, 2500);
+            } else {
+                setConfirmForeclosureError(response.message || "Foreclosure confirmation failed.");
+            }
+        } catch (err) {
+            console.error("Confirm foreclosure error:", err);
+            setConfirmForeclosureError(err.response?.data?.message || err.message || "An error occurred during foreclosure confirmation.");
+        } finally {
+            setConfirmForeclosureSubmitting(false);
+        }
+    };
 
 
     if (loading) {
@@ -234,6 +261,9 @@ export default function LoanRepaymentDetailPage() {
         prepayment_configuration
     } = repaymentDetails;
 
+    const canMakePayment = ['Active', 'Active - Overdue', 'Active - Grace Period'].includes(loan_repayment_status);
+    const canRequestForeclosure = prepayment_configuration?.allow_prepayment && canMakePayment; // Allow foreclosure if payments are generally allowed
+
     return (
         <Container fluid="lg" className="my-4 repayment-detail-page">
             <Button variant="link" onClick={() => navigate(-1)} className="mb-3 text-decoration-none ps-0">
@@ -258,6 +288,7 @@ export default function LoanRepaymentDetailPage() {
                     </Row>
                 </Card.Header>
                 <Card.Body>
+                    {/* Stats Cards ... (same as before) */}
                     <Row className="g-4">
                         <Col md={6} lg={3}>
                             <Card bg="primary" text="white" className="h-100 shadow-sm stat-card">
@@ -313,15 +344,20 @@ export default function LoanRepaymentDetailPage() {
                             </Table>
                         </Col>
                         <Col md={6} className="d-flex flex-column justify-content-center align-items-center">
-                            {loan_repayment_status === 'Active' || loan_repayment_status === 'Active - Overdue' || loan_repayment_status === 'Active - Grace Period' ? (
+                            {canMakePayment ? (
                                 <>
-                                    <Button variant="success" size="lg" className="mb-3 w-75" onClick={handleShowPaymentModal}>
+                                    <Button variant="success" size="lg" className="mb-3 w-75" onClick={() => handleShowPaymentModal()}>
                                         <DollarSignIcon size={20} className="me-2" /> Make a Payment
                                     </Button>
-                                    {prepayment_configuration?.allow_prepayment && (
-                                    <Button variant="outline-info" className="w-75" onClick={handleShowForeclosureModal}>
+                                    {canRequestForeclosure && (
+                                    <Button variant="outline-info" className="mb-3 w-75" onClick={handleShowForeclosureQuoteModal}>
                                         <Quote size={18} className="me-2" /> Request Foreclosure Quote
                                     </Button>
+                                    )}
+                                    {foreclosureQuote && canRequestForeclosure && ( // Show confirm button if quote is available
+                                        <Button variant="info" className="w-75" onClick={handleShowConfirmForeclosureModal}>
+                                            <Send size={18} className="me-2" /> Confirm Foreclosure Payment
+                                        </Button>
                                     )}
                                 </>
                             ) : (
@@ -335,6 +371,7 @@ export default function LoanRepaymentDetailPage() {
                 </Card.Body>
             </Card>
 
+            {/* Installment Schedule Table ... (same as before) */}
             <Card className="shadow-sm mb-4">
                 <Card.Header><h5 className="mb-0">Installment Schedule</h5></Card.Header>
                 <Card.Body>
@@ -377,6 +414,7 @@ export default function LoanRepaymentDetailPage() {
                 </Card.Body>
             </Card>
 
+            {/* Payment History Table ... (same as before) */}
             <Card className="shadow-sm mb-4">
                 <Card.Header><h5 className="mb-0">Payment History</h5></Card.Header>
                 <Card.Body>
@@ -411,6 +449,7 @@ export default function LoanRepaymentDetailPage() {
                 </Card.Body>
             </Card>
             
+            {/* Communication Log ... (same as before) */}
             {communication_log.length > 0 && (
                  <Card className="shadow-sm">
                     <Card.Header><h5 className="mb-0">Communication Log</h5></Card.Header>
@@ -427,7 +466,7 @@ export default function LoanRepaymentDetailPage() {
                                         <p className="mb-0 mt-1 ms-4 ps-1">{log.summary}</p>
                                     </div>
                                     <Badge bg={log.status === 'Delivered' || log.status === 'Sent' ? 'light' : 'warning'} 
-                                           text={log.status === 'Delivered' || log.status === 'Sent' ? 'dark' : 'dark'}
+                                           text={(log.status === 'Delivered' || log.status === 'Sent') && getStatusBadgeVariant(log.status) === 'light' ? 'dark' : undefined}
                                            className="ms-2">
                                         {log.status}
                                     </Badge>
@@ -438,6 +477,7 @@ export default function LoanRepaymentDetailPage() {
                 </Card>
             )}
 
+            {/* Payment Modal (same as before) */}
             <Modal show={showPaymentModal} onHide={handleClosePaymentModal} centered>
                 <Modal.Header closeButton>
                     <Modal.Title><DollarSignIcon size={24} className="me-2" />Make a Payment</Modal.Title>
@@ -446,7 +486,7 @@ export default function LoanRepaymentDetailPage() {
                     <Modal.Body>
                         {paymentSuccess && <Alert variant="success">{paymentSuccess}</Alert>}
                         {paymentError && <Alert variant="danger">{paymentError}</Alert>}
-                        <Form.Group className="mb-3" controlId="paymentAmount">
+                        <Form.Group className="mb-3" controlId="paymentAmountModal"> {/* Changed ID to avoid conflict */}
                             <Form.Label>Amount to Pay</Form.Label>
                             <InputGroup>
                                 <InputGroup.Text>₹</InputGroup.Text>
@@ -462,7 +502,7 @@ export default function LoanRepaymentDetailPage() {
                                 />
                             </InputGroup>
                         </Form.Group>
-                        <Form.Group className="mb-3" controlId="paymentMethod">
+                        <Form.Group className="mb-3" controlId="paymentMethodModal"> {/* Changed ID */}
                             <Form.Label>Payment Method</Form.Label>
                             <Form.Select 
                                 value={paymentMethod} 
@@ -486,7 +526,8 @@ export default function LoanRepaymentDetailPage() {
                 </Form>
             </Modal>
 
-            <Modal show={showForeclosureModal} onHide={handleCloseForeclosureModal} centered size="lg">
+            {/* Foreclosure Quote Modal (updated Pay button) */}
+            <Modal show={showForeclosureQuoteModal} onHide={handleCloseForeclosureQuoteModal} centered size="lg">
                  <Modal.Header closeButton>
                     <Modal.Title><Quote size={24} className="me-2" />Foreclosure Quote</Modal.Title>
                 </Modal.Header>
@@ -513,22 +554,55 @@ export default function LoanRepaymentDetailPage() {
                             <p className="small text-muted">{foreclosureQuote.notes}</p>
                             <div className="mt-3 text-center">
                                 <p>To proceed with foreclosure, please make a payment for the 'Total Amount Payable'.</p>
-                                <Button variant="success" onClick={() => { 
-                                    handleCloseForeclosureModal(); 
-                                    setPaymentAmount(foreclosureQuote.totalForeclosureAmount.toString());
-                                    setShowPaymentModal(true);
-                                    // You might want a different flow or modal for foreclosure payment confirmation
+                                <Button variant="success" className="mb-2" onClick={() => { 
+                                    handleCloseForeclosureQuoteModal(); 
+                                    handleShowPaymentModal(foreclosureQuote.totalForeclosureAmount);
                                     }}>
-                                    <DollarSignIcon size={18} className="me-1" /> Pay Foreclosure Amount
+                                    <DollarSignIcon size={18} className="me-1" /> Initiate Foreclosure Payment
                                 </Button>
-                                <p className="small mt-2">After payment, you may need to confirm the foreclosure via a separate step or it might be auto-confirmed by the system upon successful payment processing.</p>
+                                <p className="small mt-1">After successful payment, you may need to confirm the foreclosure.</p>
                             </div>
                         </>
                     )}
                 </Modal.Body>
                 <Modal.Footer>
-                    <Button variant="secondary" onClick={handleCloseForeclosureModal}>Close</Button>
+                    <Button variant="secondary" onClick={handleCloseForeclosureQuoteModal}>Close</Button>
                 </Modal.Footer>
+            </Modal>
+
+            {/* Confirm Foreclosure Modal */}
+            <Modal show={showConfirmForeclosureModal} onHide={handleCloseConfirmForeclosureModal} centered>
+                <Modal.Header closeButton>
+                    <Modal.Title><Send size={24} className="me-2" />Confirm Foreclosure Payment</Modal.Title>
+                </Modal.Header>
+                <Form onSubmit={handleConfirmForeclosureSubmit}>
+                    <Modal.Body>
+                        {confirmForeclosureSuccess && <Alert variant="success">{confirmForeclosureSuccess}</Alert>}
+                        {confirmForeclosureError && <Alert variant="danger">{confirmForeclosureError}</Alert>}
+                        <p>Please confirm that you have successfully paid the foreclosure amount of <strong>{formatCurrency(foreclosureQuote?.totalForeclosureAmount)}</strong>.</p>
+                        <Form.Group className="mb-3" controlId="foreclosurePaymentRef">
+                            <Form.Label>Payment Reference ID (Optional but Recommended)</Form.Label>
+                            <Form.Control
+                                type="text"
+                                placeholder="Enter payment transaction ID or reference"
+                                value={foreclosurePaymentRef}
+                                onChange={(e) => setForeclosurePaymentRef(e.target.value)}
+                                disabled={confirmForeclosureSubmitting}
+                            />
+                        </Form.Group>
+                         <Alert variant="warning" size="sm">
+                            <AlertTriangle size={16} className="me-1"/> Ensure the payment has been successfully processed before confirming. This action will attempt to formally close your loan.
+                        </Alert>
+                    </Modal.Body>
+                    <Modal.Footer>
+                        <Button variant="secondary" onClick={handleCloseConfirmForeclosureModal} disabled={confirmForeclosureSubmitting}>
+                            Cancel
+                        </Button>
+                        <Button variant="primary" type="submit" disabled={confirmForeclosureSubmitting || !foreclosureQuote}>
+                            {confirmForeclosureSubmitting ? <><Spinner as="span" animation="border" size="sm" /> Confirming...</> : 'Confirm Foreclosure'}
+                        </Button>
+                    </Modal.Footer>
+                </Form>
             </Modal>
 
         </Container>
