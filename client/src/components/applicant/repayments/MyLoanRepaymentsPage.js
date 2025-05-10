@@ -1,43 +1,16 @@
 // src/components/applicant/repayments/MyLoanRepaymentsPage.js
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom'; // Assuming react-router-dom
+import { useNavigate } from 'react-router-dom'; 
 import { Container, Card, Table, Button, Spinner, Alert, Badge, Row, Col } from 'react-bootstrap';
 import { List, Eye, DollarSign, CalendarDays, CheckCircle, AlertTriangle, Hourglass } from 'lucide-react';
-// Placeholder for your API call function
-// import { axiosInstance } from '../../../config';
+import { formatCurrency, formatDate, getStatusBadgeVariant } from '../../../utils/formatters'; 
+import { axiosInstance } from '../../../config'; // Assuming this is your configured axios instance
 
-// Mock API call - replace with your actual API call
+// Actual API call function
 const fetchMyLoanRepaymentsAPI = async () => {
-    // const response = await axiosInstance.get('/api/repayments/my-loans');
-    // return response.data.data;
-    return new Promise(resolve => setTimeout(() => resolve([
-        { _id: 'repayment123', loan_id: { _id: 'loanABC', title: 'Personal Loan for Vacation' }, disbursed_amount: 50000, initial_calculated_emi: 5000, current_outstanding_principal: 25000, next_due_date: '2025-06-05T00:00:00.000Z', loan_repayment_status: 'Active', createdAt: '2025-01-15T00:00:00.000Z' },
-        { _id: 'repayment456', loan_id: { _id: 'loanDEF', title: 'Home Renovation Loan' }, disbursed_amount: 200000, initial_calculated_emi: 15000, current_outstanding_principal: 0, next_due_date: null, loan_repayment_status: 'Fully Repaid', createdAt: '2023-07-10T00:00:00.000Z' },
-        { _id: 'repayment789', loan_id: { _id: 'loanGHI', title: 'Education Top-up' }, disbursed_amount: 75000, initial_calculated_emi: 7000, current_outstanding_principal: 75000, next_due_date: '2025-05-20T00:00:00.000Z', loan_repayment_status: 'Active - Overdue', createdAt: '2024-11-01T00:00:00.000Z' },
-    ]), 1000));
+    const response = await axiosInstance.get('/api/repayments/my-loans'); // Endpoint from your routes
+    return response.data.data; // Assuming API returns { success: true, data: [...] }
 };
-
-// Helper to format currency - create a utils/formatters.js or similar
-const formatCurrency = (amount, currency = 'INR') => {
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: currency, minimumFractionDigits: 0 }).format(amount);
-};
-
-// Helper to format dates
-const formatDate = (dateString, options = { year: 'numeric', month: 'short', day: 'numeric' }) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-GB', options);
-};
-
-const getStatusBadgeVariant = (status) => {
-    switch (status) {
-        case 'Active': return 'success';
-        case 'Active - Overdue': return 'danger';
-        case 'Fully Repaid': return 'primary';
-        case 'Foreclosed': return 'info';
-        default: return 'secondary';
-    }
-};
-
 
 export default function MyLoanRepaymentsPage() {
     const [repayments, setRepayments] = useState([]);
@@ -53,8 +26,8 @@ export default function MyLoanRepaymentsPage() {
                 const data = await fetchMyLoanRepaymentsAPI();
                 setRepayments(data);
             } catch (err) {
-                setError(err.response?.data?.message || err.message || 'Failed to fetch loan repayments.');
                 console.error("Fetch repayments error:", err);
+                setError(err.response?.data?.message || err.message || 'Failed to fetch loan repayments.');
             } finally {
                 setLoading(false);
             }
@@ -113,7 +86,8 @@ export default function MyLoanRepaymentsPage() {
                                         <td className="text-end text-info fw-bold">{formatCurrency(rp.current_outstanding_principal)}</td>
                                         <td>{formatDate(rp.next_due_date)}</td>
                                         <td>
-                                            <Badge pill bg={getStatusBadgeVariant(rp.loan_repayment_status)}>
+                                            <Badge pill bg={getStatusBadgeVariant(rp.loan_repayment_status)}
+                                                   text={getStatusBadgeVariant(rp.loan_repayment_status) === 'light' ? 'dark' : undefined}>
                                                 {rp.loan_repayment_status === 'Active' && <Hourglass size={12} className="me-1" />}
                                                 {rp.loan_repayment_status === 'Active - Overdue' && <AlertTriangle size={12} className="me-1" />}
                                                 {rp.loan_repayment_status === 'Fully Repaid' && <CheckCircle size={12} className="me-1" />}
@@ -124,7 +98,7 @@ export default function MyLoanRepaymentsPage() {
                                             <Button 
                                                 variant="outline-primary" 
                                                 size="sm" 
-                                                onClick={() => navigate(`/repayments/${rp._id}`)} // Adjust route as per your setup
+                                                onClick={() => navigate(`/repayments/${rp._id}`)} 
                                                 title="View Details"
                                             >
                                                 <Eye size={16} className="me-1" /> Details

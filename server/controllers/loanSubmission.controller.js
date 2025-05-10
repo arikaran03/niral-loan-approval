@@ -1,8 +1,11 @@
 // src/controllers/loanSubmission.controller.js
 import LoanSubmission from '../database/models/LoanSubmission.js';
 import Loan from '../database/models/Loan.js';
-import Image from '../database/models/Image.js'; // Still needed for validation checks potentially
+import Image from '../database/models/Image.js'; // Kept for potential future use or consistency
 import mongoose from 'mongoose';
+// Correctly import the named export from loanRepayment.controller.js
+import { createLoanRepaymentRecordInternal } from './loanRepayment.controller.js'; 
+
 
 // Helper function
 function formatMongooseError(err) {
@@ -19,24 +22,20 @@ function formatMongooseError(err) {
 export async function getDraft(req, res, next) {
     try {
       const { loanId } = req.params;
-      const userId = req.user._id; // Assuming req.user is populated by auth middleware
+      const userId = req.user._id; 
 
       if (!mongoose.Types.ObjectId.isValid(loanId)) {
         return res.status(400).json({ error: 'Invalid loan ID.' });
       }
-
-      // Find draft but DO NOT populate fileRefs
       const draft = await LoanSubmission.findOne({
         loan_id: loanId,
         user_id: userId,
         stage: 'draft'
       })
-      .populate('loan_id', 'title fields min_amount max_amount') // Populate loan info
-      .populate('user_id', 'name email account_number'); // Populate user info
-      // REMOVED: .populate('fields.fileRef')
-      // REMOVED: .populate('requiredDocumentRefs.fileRef')
-
-      return res.json(draft || null); // fileRef fields will contain only ObjectIds
+      .populate('loan_id', 'title fields min_amount max_amount') 
+      .populate('user_id', 'name email account_number'); 
+      
+      return res.json(draft || null);
     } catch (err) {
        console.error("Error in getDraft:", err);
        next(err);
@@ -49,112 +48,96 @@ export async function createSubmission(req, res, next) {
       const userId = req.user._id;
       const { amount, fields, requiredDocumentRefs } = req.body;
 
-      // --- Validations ---
       if (!mongoose.Types.ObjectId.isValid(loanId)) return res.status(400).json({ error: 'Invalid loan ID.' });
-      const loan = await Loan.findById(loanId).select('+fields +required_documents');
+      const loan = await Loan.findById(loanId).select('+fields +required_documents'); // Ensure all necessary fields are selected
       if (!loan) return res.status(404).json({ error: 'Loan definition not found.' });
-      const existingFinal = await LoanSubmission.findOne({ loan_id: loanId, user_id: userId, stage: { $ne: 'draft' } });
-      if (existingFinal) return res.status(400).json({ error: 'You have already submitted this application.' });
-      if (typeof amount !== 'number' || amount < 0) return res.status(400).json({ error: 'Valid loan amount is required.' });
+      const existingFinal = await LoanSubmission.findOne({ loan_id: loanId, user_id: userId, stage: { $nin: ['draft', 'rejected'] } });
+      if (existingFinal) return res.status(400).json({ error: 'You have an active or pending submission for this loan.' });
+      if (typeof amount !== 'number' || amount <= 0) return res.status(400).json({ error: 'Valid positive loan amount is required.' });
       if (loan.min_amount !== null && amount < loan.min_amount) return res.status(400).json({ error: `Amount must be at least ${loan.min_amount}.` });
       if (loan.max_amount !== null && amount > loan.max_amount) return res.status(400).json({ error: `Amount cannot exceed ${loan.max_amount}.` });
       if (!Array.isArray(fields)) return res.status(400).json({ error: 'Fields data must be an array.' });
       if (!Array.isArray(requiredDocumentRefs)) return res.status(400).json({ error: 'Required documents references must be an array.' });
 
-      // --- Field and Document Validation Loop ---
       const submissionFields = [];
       const submissionRequiredDocs = [];
       const validationErrors = [];
       const submittedFieldsMap = new Map(fields.map(f => [f.field_id, f]));
       const submittedDocsMap = new Map(requiredDocumentRefs.map(d => [d.documentName, d]));
 
-      // Validate Custom Fields
       for (const schemaField of loan.fields) {
           const submittedField = submittedFieldsMap.get(schemaField.field_id);
           const value = submittedField?.value;
-          const fileRef = submittedField?.fileRef; // This is the ObjectId string from frontend
+          const fileRef = submittedField?.fileRef; 
 
           if (schemaField.required) {
               if (schemaField.type === 'image' || schemaField.type === 'document') {
                   if (!fileRef || !mongoose.Types.ObjectId.isValid(fileRef)) { validationErrors.push(`File upload is required for ${schemaField.field_label}.`); }
-                  // Check if Image exists (optional, adds DB load)
-                  // else { const fileDoc = await Image.findById(fileRef); if (!fileDoc) validationErrors.push(`Uploaded file reference invalid for ${schemaField.field_label}.`); }
               } else if (schemaField.type === 'checkbox') {
                    if (value !== true) { validationErrors.push(`${schemaField.field_label} must be checked.`); }
               } else {
                   if (value === null || value === undefined || String(value).trim() === '') { validationErrors.push(`Value is required for ${schemaField.field_label}.`); }
               }
           }
-          // Add other type/min/max validations here...
 
           if (submittedField) {
               submissionFields.push({
                   field_id: schemaField.field_id, field_label: schemaField.field_label, type: schemaField.type,
                   value: (schemaField.type !== 'image' && schemaField.type !== 'document') ? value : null,
-                  fileRef: (schemaField.type === 'image' || schemaField.type === 'document') ? fileRef : null // Save the ObjectId
+                  fileRef: (schemaField.type === 'image' || schemaField.type === 'document') ? fileRef : null 
               });
           } else if (schemaField.required) {
               validationErrors.push(`Required field ${schemaField.field_label} was not submitted.`);
           }
       }
 
-      // Validate Required Documents
        for (const reqDoc of loan.required_documents) {
            const submittedDoc = submittedDocsMap.get(reqDoc.name);
-           const fileRef = submittedDoc?.fileRef; // This is the ObjectId string from frontend
+           const fileRef = submittedDoc?.fileRef; 
 
            if (!fileRef || !mongoose.Types.ObjectId.isValid(fileRef)) {
                validationErrors.push(`Required document upload is missing for ${reqDoc.name}.`);
-               // Optional: Check if Image exists
-               // else { const fileDoc = await Image.findById(fileRef); if (!fileDoc) validationErrors.push(`Uploaded file reference invalid for ${reqDoc.name}.`); }
            } else {
                submissionRequiredDocs.push({
                    documentName: reqDoc.name,
-                   fileRef: fileRef // Save the ObjectId
+                   fileRef: fileRef 
                });
            }
        }
 
       if (validationErrors.length > 0) { return res.status(400).json({ error: validationErrors.join('; ') }); }
-      // --- End Validation ---
-
-      // Find existing draft or prepare new submission data
+      
       let submission = await LoanSubmission.findOne({ loan_id: loanId, user_id: userId, stage: 'draft' });
       const now = new Date();
-      const historyEntry = { stage: 'pending', changed_by: userId, changed_at: now };
+      const historyEntry = { stage: 'pending', changed_by: userId, changed_at: now }; 
       const submissionData = {
           loan_id: loan._id, user_id: userId, amount,
           fields: submissionFields,
           requiredDocumentRefs: submissionRequiredDocs,
-          stage: 'pending', history: [historyEntry], updated_at: now
+          stage: 'pending', 
+          history: submission?.history ? [...submission.history, historyEntry] : [historyEntry], 
+          updated_at: now,
+          approver_id: undefined,
+          approval_date: undefined,
+          rejection_reason: undefined
       };
 
-      if (submission) { // Update draft
-          console.log(`Updating draft ${submission._id} to pending.`);
-          submission.set(submissionData); // Use set to apply multiple fields
-          if (submission.history.length === 0 || submission.history[submission.history.length - 1].stage !== 'pending') {
-              submission.history.push(historyEntry);
-          }
+      if (submission) { 
+          submission.set(submissionData); 
           await submission.save();
-      } else { // Create new
-          console.log(`Creating new submission in pending stage.`);
-          submission = await LoanSubmission.create(submissionData);
+      } else { 
+          submission = await LoanSubmission.create({ ...submissionData, created_at: now }); 
       }
 
-      console.log('Submission successful:', submission._id);
-
-      // Populate only user and loan info for the response
-      // DO NOT populate fileRefs here
       const finalSubmission = await LoanSubmission.findById(submission._id)
           .populate('user_id', 'name email account_number')
           .populate('loan_id', 'title');
 
-      return res.status(201).json(finalSubmission); // Return submission with only IDs in fileRef fields
+      return res.status(201).json(finalSubmission); 
 
     } catch (err) {
       if (err.name === 'ValidationError') {
           const msg = formatMongooseError(err);
-          console.error("Mongoose Validation Error:", msg);
           return res.status(400).json({ error: msg });
       }
       console.error("Error in createSubmission:", err);
@@ -168,7 +151,6 @@ export async function listByLoan(req, res, next) {
       if (!mongoose.Types.ObjectId.isValid(loanId)) {
         return res.status(400).json({ error: 'Invalid loan ID.' });
       }
-      // Only populate user, leave fileRefs as IDs
       const submissions = await LoanSubmission
         .find({ loan_id: loanId })
         .populate('user_id', 'name email')
@@ -187,17 +169,14 @@ export async function getSubmission(req, res, next) {
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ error: 'Invalid submission ID.' });
       }
-      // Populate user and loan, but NOT fileRefs
       const submission = await LoanSubmission.findById(id)
         .populate('user_id', 'name email account_number')
-        .populate('loan_id', 'title');
-        // REMOVED: .populate('fields.fileRef')
-        // REMOVED: .populate('requiredDocumentRefs.fileRef')
+        .populate('loan_id', 'title interest_rate tenure_months processing_fee'); // Populated fields needed for repayment
 
       if (!submission) {
         return res.status(404).json({ error: 'Submission not found.' });
       }
-      return res.json(submission); // Returns submission with ObjectIds in fileRef fields
+      return res.json(submission);
     } catch (err) {
         console.error("Error in getSubmission:", err);
         next(err);
@@ -205,12 +184,10 @@ export async function getSubmission(req, res, next) {
 }
 
 export async function updateSubmission(req, res, next) {
-    // This function primarily updates stage/amount/reason.
-    // It doesn't modify fileRefs, so no change needed for population here.
-    // If it were to return the updated doc, we would ensure fileRefs are not populated.
     try {
       const { id } = req.params;
-      const { stage, amount, rejection_reason } = req.body;
+      const { stage, amount, rejection_reason } = req.body; 
+      // const adminUserId = req.user._id; // Assuming admin is making this general update
 
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ error: 'Invalid submission ID.' });
@@ -221,38 +198,50 @@ export async function updateSubmission(req, res, next) {
         return res.status(404).json({ error: 'Submission not found.' });
       }
 
+      if (submission.stage === 'paid_to_applicant' && stage && stage !== 'paid_to_applicant') {
+          return res.status(400).json({ error: "Cannot change stage from 'Paid to Applicant' using this method. Loan is considered disbursed." });
+      }
+      if (stage === 'paid_to_applicant') {
+          return res.status(400).json({ error: "Use the 'change-stage' endpoint to mark as 'Paid to Applicant'." });
+      }
+      // This endpoint is not for primary stage changes (approve, reject, paid).
+      if (stage && submission.stage !== stage && ['pending', 'approved', 'rejected', 'paid_to_applicant'].includes(stage)) {
+        return res.status(400).json({ error: "Please use the '/change-stage' endpoint for primary stage modifications (approve, reject, paid to applicant, revert to pending)." });
+      }
+
+
       const update = {};
-      let stageChanged = false;
       const now = new Date();
 
-      if (stage && submission.stage !== stage) {
-        if (!['pending','approved','rejected'].includes(stage)) return res.status(400).json({ error: 'Invalid target stage.' });
-        if (submission.stage === 'draft') return res.status(400).json({ error: 'Cannot change stage from draft using this endpoint.' });
-
-        update.stage = stage; stageChanged = true;
-        const historyEntry = { stage: stage, changed_by: req.user._id, changed_at: now };
-        submission.history.push(historyEntry);
-
-         if (stage === 'approved') { update.approver_id = req.user._id; update.approval_date = now; update.rejection_reason = undefined; }
-         else if (stage === 'rejected') { update.approver_id = req.user._id; update.approval_date = undefined; update.rejection_reason = rejection_reason || 'Rejected without specific reason.'; }
-         else { update.approver_id = undefined; update.approval_date = undefined; update.rejection_reason = undefined; }
-      }
       if (typeof amount === 'number') {
-        if (amount < 0) return res.status(400).json({ error: 'Amount must be non-negative.' });
+        if (amount <= 0) return res.status(400).json({ error: 'Amount must be positive.' });
+        const loan = await Loan.findById(submission.loan_id);
+        if (!loan) return res.status(404).json({ error: "Associated loan product not found." });
+        if (loan.min_amount !== null && amount < loan.min_amount) return res.status(400).json({ error: `Amount must be at least ${loan.min_amount}.` });
+        if (loan.max_amount !== null && amount > loan.max_amount) return res.status(400).json({ error: `Amount cannot exceed ${loan.max_amount}.` });
         update.amount = amount;
       }
-      update.updated_at = now; // Explicitly set update time
+      
+      if (rejection_reason && submission.stage === 'rejected') {
+          update.rejection_reason = rejection_reason;
+      }
+      
+      // Only update if there are actual changes to save
+      if (Object.keys(update).length > 0) {
+        update.updated_at = now; 
+        submission.set(update);
+        // Optionally add a history entry for general admin updates if needed
+        // submission.history.push({ stage: submission.stage, changed_by: adminUserId, changed_at: now, notes: "Admin general update (e.g., amount correction)" });
+        await submission.save();
+      }
 
-      submission.set(update);
-      const updatedSubmission = await submission.save();
 
-      // Populate user/loan for response, NOT fileRefs
-      await updatedSubmission.populate([
+      const populatedSubmission = await LoanSubmission.findById(submission._id).populate([
           { path: 'user_id', select: 'name email account_number' },
-          { path: 'loan_id', select: 'title' }
+          { path: 'loan_id', select: 'title interest_rate tenure_months processing_fee' }
       ]);
 
-      return res.json(updatedSubmission);
+      return res.json(populatedSubmission);
     } catch (err) {
         if (err.name === 'ValidationError') { const msg = formatMongooseError(err); return res.status(400).json({ error: msg }); }
         console.error("Error in updateSubmission:", err); next(err);
@@ -260,43 +249,150 @@ export async function updateSubmission(req, res, next) {
 }
 
 export async function changeSubmissionStage(req, res, next) {
-    // This function also returns the submission, so remove fileRef population
-    console.log('changeSubmissionStage called');
+    console.log('changeSubmissionStage called with body:', req.body);
     try {
       const { id } = req.params;
       const { stage, rejection_reason } = req.body;
+      const adminUserId = req.user._id; 
 
       if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid submission ID.' });
-      const submission = await LoanSubmission.findById(id);
+      
+      const submission = await LoanSubmission.findById(id)
+            .populate('loan_id', 'title interest_rate tenure_months processing_fee') // Ensure all needed fields are here
+            .populate('user_id', '_id name email'); // Populate user details needed for repayment or logging
+      
       if (!submission) return res.status(404).json({ error: 'Submission not found.' });
+      if (!submission.loan_id) return res.status(500).json({ error: 'CRITICAL: Associated loan product details missing from submission.' });
+      if (!submission.user_id || !submission.user_id._id) return res.status(500).json({ error: 'CRITICAL: Applicant user details missing from submission.' });
+
 
       const currentStage = submission.stage;
-      const ALLOWED_TARGET_STAGES = ['pending', 'approved', 'rejected'];
-      if (!ALLOWED_TARGET_STAGES.includes(stage)) return res.status(400).json({ error: `Target stage must be one of ${ALLOWED_TARGET_STAGES.join(', ')}.` });
-      if (currentStage === 'draft') return res.status(400).json({ error: 'Cannot change stage from draft using this endpoint.' });
-      if (currentStage === stage) return res.status(400).json({ error: `Submission is already in stage: ${stage}.` });
-      if (!((currentStage === 'pending' && (stage === 'approved' || stage === 'rejected')) || ((currentStage === 'approved' || currentStage === 'rejected') && stage === 'pending'))) {
-           return res.status(400).json({ error: `Cannot transition from stage '${currentStage}' to '${stage}'.` });
+      const ALLOWED_TARGET_STAGES = ['pending', 'approved', 'rejected', 'paid_to_applicant'];
+      
+      if (!ALLOWED_TARGET_STAGES.includes(stage)) {
+        return res.status(400).json({ error: `Target stage must be one of ${ALLOWED_TARGET_STAGES.join(', ')}.` });
+      }
+      if (currentStage === 'draft') {
+        return res.status(400).json({ error: 'Cannot change stage from draft using this endpoint. Applicant must submit first.' });
+      }
+      if (currentStage === stage) {
+        return res.status(400).json({ error: `Submission is already in stage: ${stage}.` });
       }
 
+      // Core irreversibility rule
+      if (currentStage === 'paid_to_applicant') { 
+          return res.status(400).json({ error: "Cannot change stage from 'Paid to Applicant'. This action is final." });
+      }
+
+      // Define valid transitions
+      const validTransitions = {
+          pending: ['approved', 'rejected'],
+          approved: ['pending', 'paid_to_applicant'], // Can revert to pending or move to paid
+          rejected: ['pending'] // Can only revert to pending
+          // 'paid_to_applicant' has no further transitions out of it via this logic
+      };
+
+      if (!validTransitions[currentStage] || !validTransitions[currentStage].includes(stage)) {
+          return res.status(400).json({ error: `Invalid stage transition from '${currentStage}' to '${stage}'.` });
+      }
+
+
       const now = new Date();
-      const historyEntry = { stage: stage, changed_by: req.user._id, changed_at: now };
+      const historyEntry = { stage: stage, changed_by: adminUserId, changed_at: now };
       submission.history.push(historyEntry);
       submission.stage = stage;
-      if (stage === 'approved') { submission.approver_id = req.user._id; submission.approval_date = now; submission.rejection_reason = undefined; }
-      else if (stage === 'rejected') { submission.approver_id = req.user._id; submission.approval_date = undefined; submission.rejection_reason = rejection_reason || 'Rejected without specific reason.'; }
-      else { submission.approver_id = undefined; submission.approval_date = undefined; submission.rejection_reason = undefined; }
-      submission.updated_at = now;
 
+      if (stage === 'approved') { 
+          submission.approver_id = adminUserId; 
+          submission.approval_date = now; 
+          submission.rejection_reason = undefined; 
+      } else if (stage === 'rejected') { 
+          submission.approver_id = adminUserId; 
+          submission.approval_date = undefined; 
+          submission.rejection_reason = rejection_reason || 'Rejected without specific reason.'; 
+      } else if (stage === 'pending') { 
+          submission.approver_id = undefined; 
+          submission.approval_date = undefined; 
+          submission.rejection_reason = undefined; 
+      } else if (stage === 'paid_to_applicant') {
+          // This check is technically covered by validTransitions, but good for explicitness
+          if (currentStage !== 'approved') {
+              return res.status(400).json({ error: "Loan must be 'approved' before it can be marked as 'paid_to_applicant'."});
+          }
+          // Add a field to LoanSubmission schema if you want to store disbursement date directly
+          // submission.disbursement_date = now; 
+
+          // --- Create LoanRepayment Record ---
+          try {
+            const loanProductDetails = submission.loan_id; 
+            const disbursedAmount = submission.amount;
+            
+            // Determine repayment_start_date (e.g., 1st of next month, or configurable delay)
+            const today = new Date();
+            let repaymentStartDate = new Date(today.getFullYear(), today.getMonth() + 1, 1); // Default to 1st of next month
+            // Example: If disbursement is late in month (e.g., after 20th), start repayment month after next
+            if (today.getDate() > 20) { 
+                repaymentStartDate = new Date(today.getFullYear(), today.getMonth() + 2, 1);
+            }
+
+            // Calculate EMI
+            const P = disbursedAmount;
+            const annualRate = loanProductDetails.interest_rate / 100; // Ensure interest_rate is a percentage like 12 for 12%
+            const monthlyRate = annualRate / 12;
+            const n = loanProductDetails.tenure_months; // Number of installments
+            let calculatedEMI = 0;
+
+            if (n <= 0) { // Validate tenure
+                return res.status(400).json({ error: "Invalid loan tenure (must be > 0) for EMI calculation." });
+            }
+            if (P <= 0) { // Validate principal
+                return res.status(400).json({ error: "Invalid loan amount (must be > 0) for EMI calculation." });
+            }
+
+
+            if (monthlyRate > 0) {
+                 calculatedEMI = P * monthlyRate * Math.pow(1 + monthlyRate, n) / (Math.pow(1 + monthlyRate, n) - 1);
+            } else { // Interest-free loan
+                 calculatedEMI = P / n;
+            }
+            calculatedEMI = Math.round(calculatedEMI * 100) / 100; // Round to 2 decimal places
+
+            if (isNaN(calculatedEMI) || !isFinite(calculatedEMI) || calculatedEMI <=0) {
+                console.error("EMI Calculation error:", {P, annualRate, monthlyRate, n, calculatedEMI});
+                return res.status(500).json({ error: "Could not calculate a valid EMI. Please check loan terms." });
+            }
+
+            await createLoanRepaymentRecordInternal(
+                submission._id, 
+                disbursedAmount, 
+                repaymentStartDate, 
+                calculatedEMI, 
+                loanProductDetails, 
+                submission.user_id._id, 
+                adminUserId 
+            );
+            console.log(`LoanRepayment record creation successfully initiated for submission ${submission._id}`);
+
+          } catch (repaymentError) {
+              console.error("Error during LoanRepayment record creation:", repaymentError);
+              // This is a critical failure. The stage should ideally not be 'paid_to_applicant' if this fails.
+              // For robust systems, a transaction would wrap the stage change and repayment creation.
+              // Here, we return an error and the frontend should understand the stage change might not be fully complete.
+              return res.status(500).json({ 
+                  error: `Failed to create repayment schedule: ${repaymentError.message}. The loan submission stage was NOT updated to 'paid_to_applicant'. Please resolve the issue and try again.`,
+              });
+          }
+      }
+      
+      submission.updated_at = now;
       const updatedSubmission = await submission.save();
 
-      // Populate user/loan for response, NOT fileRefs
-      await updatedSubmission.populate([
-          { path: 'user_id', select: 'name email account_number' },
-          { path: 'loan_id', select: 'title' }
-      ]);
+      // Re-populate after save to ensure all fields are fresh for the response
+      const finalPopulatedSubmission = await LoanSubmission.findById(updatedSubmission._id)
+        .populate('user_id', 'name email account_number')
+        .populate('loan_id', 'title interest_rate tenure_months processing_fee');
 
-      return res.json(updatedSubmission);
+      return res.json(finalPopulatedSubmission);
     } catch (err) {
         if (err.name === 'ValidationError') { const msg = formatMongooseError(err); return res.status(400).json({ error: msg }); }
         console.error("Error in changeSubmissionStage:", err); next(err);
@@ -304,11 +400,10 @@ export async function changeSubmissionStage(req, res, next) {
 }
 
 export async function saveDraft(req, res, next) {
-    // Drafts might not need population in response, but ensure fileRefs are saved as IDs
     try {
       const { loanId } = req.params;
       const userId = req.user._id;
-      const { amount = 0, fields, requiredDocumentRefs } = req.body; // Expect requiredDocumentRefs
+      const { amount = 0, fields, requiredDocumentRefs } = req.body; 
 
       if (!mongoose.Types.ObjectId.isValid(loanId)) return res.status(400).json({ error: 'Invalid loan ID.' });
       const loan = await Loan.findById(loanId);
@@ -316,35 +411,30 @@ export async function saveDraft(req, res, next) {
       if (!Array.isArray(fields)) return res.status(400).json({ error: '`fields` must be an array.' });
       if (requiredDocumentRefs && !Array.isArray(requiredDocumentRefs)) return res.status(400).json({ error: '`requiredDocumentRefs` must be an array if provided.' });
 
-
-      // Prepare fields - ensure fileRef is ObjectId or null
       const processedFields = fields.map(f => ({
           ...f,
           fileRef: (f.type === 'image' || f.type === 'document') && f.fileRef && mongoose.Types.ObjectId.isValid(f.fileRef) ? f.fileRef : null,
-          value: (f.type === 'image' || f.type === 'document') ? null : f.value // Clear value if fileRef exists
+          value: (f.type === 'image' || f.type === 'document') ? null : f.value 
       }));
 
-      // Prepare required docs - ensure fileRef is ObjectId or null
       const processedRequiredDocs = (requiredDocumentRefs || []).map(d => ({
           documentName: d.documentName,
           fileRef: d.fileRef && mongoose.Types.ObjectId.isValid(d.fileRef) ? d.fileRef : null
-      })).filter(d => d.documentName && d.fileRef); // Filter out invalid entries
+      })).filter(d => d.documentName && (d.fileRef !== null && d.fileRef !== undefined) ); 
 
       const draft = await LoanSubmission.findOneAndUpdate(
         { loan_id: loanId, user_id: userId, stage: 'draft' },
         {
           loan_id: loanId,
           user_id: userId,
-          amount,
-          fields: processedFields, // Use processed fields
-          requiredDocumentRefs: processedRequiredDocs, // Use processed refs
+          amount: Number(amount) || 0, 
+          fields: processedFields, 
+          requiredDocumentRefs: processedRequiredDocs, 
           stage: 'draft',
-          // timestamps: true handles updated_at
         },
         { upsert: true, new: true, setDefaultsOnInsert: true, timestamps: true }
       );
-
-      // Return draft with only IDs for fileRefs
+      
       return res.status(200).json(draft);
     } catch (err) {
         if (err.name === 'ValidationError') { const msg = formatMongooseError(err); return res.status(400).json({ error: msg }); }
@@ -354,55 +444,46 @@ export async function saveDraft(req, res, next) {
 
 
 export async function filterSubmissions(req, res, next) {
-    // This uses aggregation, population needs to be handled differently
-    // Keeping it as is for now, returning IDs only by default from aggregation
     try {
       const { loanId, accountNumber, applicantName, fromDate, toDate, stage } = req.query;
       const match = {};
       if (loanId && mongoose.Types.ObjectId.isValid(loanId)) { match.loan_id = new mongoose.Types.ObjectId(loanId); }
       if (stage) { match.stage = stage; }
-      if (fromDate || toDate) { match.created_at = {}; if (fromDate) { match.created_at.$gte = new Date(fromDate); } if (toDate) { match.created_at.$lte = new Date(toDate); } }
+      if (fromDate || toDate) { 
+          match.created_at = {}; 
+          if (fromDate) { match.created_at.$gte = new Date(new Date(fromDate).setHours(0,0,0,0)); } 
+          if (toDate) { match.created_at.$lte = new Date(new Date(toDate).setHours(23,59,59,999)); } 
+      }
 
       const pipeline = [
         { $match: match },
-        { $lookup: { from: 'users', localField: 'user_id', foreignField: '_id', as: 'user' } },
-        // Use $unwind with preserveNullAndEmptyArrays to keep submissions even if user lookup fails
-        { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } }
+        { $lookup: { from: 'users', localField: 'user_id', foreignField: '_id', as: 'user_doc' } }, 
+        { $unwind: { path: '$user_doc', preserveNullAndEmptyArrays: true } }
       ];
 
-      if (accountNumber) { pipeline.push({ $match: { 'user.account_number': accountNumber } }); }
-      if (applicantName) { pipeline.push({ $match: { 'user.name': { $regex: applicantName, $options: 'i' } } }); }
+      if (accountNumber) { pipeline.push({ $match: { 'user_doc.account_number': accountNumber } }); }
+      if (applicantName) { pipeline.push({ $match: { 'user_doc.name': { $regex: applicantName, $options: 'i' } } }); }
 
       pipeline.push(
-        { $lookup: { from: 'loans', localField: 'loan_id', foreignField: '_id', as: 'loan' } },
-        // Use $unwind with preserveNullAndEmptyArrays for loan too
-        { $unwind: { path: '$loan', preserveNullAndEmptyArrays: true } }
+        { $lookup: { from: 'loans', localField: 'loan_id', foreignField: '_id', as: 'loan_doc' } }, 
+        { $unwind: { path: '$loan_doc', preserveNullAndEmptyArrays: true } }
       );
 
-      // Project only necessary fields from loan/user to keep response smaller if needed
       pipeline.push({
           $project: {
-              // Include all original submission fields
               amount: 1, stage: 1, fields: 1, requiredDocumentRefs: 1, history: 1,
               approver_id: 1, approval_date: 1, rejection_reason: 1, created_at: 1, updated_at: 1,
-              // Select specific fields from populated docs
-              'loan._id': '$loan._id', // Rename _id to avoid conflict if needed
-              'loan.title': '$loan.title',
-              'user._id': '$user._id',
-              'user.name': '$user.name',
-              'user.email': '$user.email',
-              'user.account_number': '$user.account_number',
-              // Explicitly include IDs needed for frontend links
-              'loan_id': 1,
-              'user_id': 1
+              loan_id: 1, 
+              user_id: 1, 
+              loan: { _id: '$loan_doc._id', title: '$loan_doc.title' }, 
+              user: { _id: '$user_doc._id', name: '$user_doc.name', email: '$user_doc.email', account_number: '$user_doc.account_number' } 
           }
       });
 
       pipeline.push({ $sort: { created_at: -1 } });
 
       const submissions = await LoanSubmission.aggregate(pipeline);
-
-      // Result 'submissions' will have user/loan embedded, but fileRefs will be ObjectIds
+      
       return res.json(submissions);
     } catch (err) {
         console.error("Error in filterSubmissions:", err);
@@ -412,25 +493,19 @@ export async function filterSubmissions(req, res, next) {
 
 export async function getMySubmissions(req, res, next) {
   try {
-    const userId = req.user._id; // Get user ID from authentication middleware
+    const userId = req.user._id; 
 
     if (!userId) {
         return res.status(401).json({ error: 'User not authenticated.' });
     }
-
-    // Find submissions for the user, populate necessary details
-    // Sort by most recently updated
     const submissions = await LoanSubmission.find({ user_id: userId })
-      .populate('loan_id', 'title interest_rate tenure_months') // Populate loan details needed for display
-      // Don't populate user_id again as it's the current user
-      // Optionally populate history details if needed directly on dashboard
-      // .populate('history.changed_by', 'name') // Might not be needed for user view
-      .sort({ updated_at: -1 }); // Show most recent first
+      .populate('loan_id', 'title interest_rate tenure_months') 
+      .sort({ updated_at: -1 }); 
 
     return res.json(submissions);
 
   } catch (err) {
     console.error("Error fetching user's submissions:", err);
-    next(err); // Pass to global error handler
+    next(err); 
   }
 }
