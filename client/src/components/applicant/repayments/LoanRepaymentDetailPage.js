@@ -5,7 +5,7 @@ import { Container, Card, Row, Col, Table, Button, Spinner, Alert, Badge, Modal,
 import { 
     ArrowLeft, Calendar, CheckCircle, XCircle, Info, FileText, 
     DollarSign as DollarSignIcon, CreditCard, Landmark, MessageSquare, 
-    Quote, ShieldCheck, ShieldX, Hourglass, AlertTriangle, Send, 
+    Quote, ShieldCheck, Hourglass, AlertTriangle, Send, 
     TrendingUp, TrendingDown, Percent, HelpCircle, SlidersHorizontal, History // Changed ClockHistory to History
 } from 'lucide-react';
 import { formatCurrency, formatDate, getStatusBadgeVariant, getInstallmentStatusBadgeVariant } from '../../../utils/formatters'; 
@@ -97,7 +97,7 @@ export default function LoanRepaymentDetailPage() {
         } finally {
             if (!isRefresh) setLoading(false);
         }
-    }, [repaymentId]); 
+    }, [repaymentId, showPaymentModal, paymentAmount, repaymentDetails]); 
 
     useEffect(() => {
         loadDetails();

@@ -1,5 +1,5 @@
 // src/controllers/loan.controller.js
-import Loan from '../database/models/Loan.js';
+import Loan from '../database/models/LoanModel.js';
 import { randomUUID } from 'crypto';
 
 /**

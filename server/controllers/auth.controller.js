@@ -1,6 +1,5 @@
 // src/controllers/auth.controller.js
-import User from '../database/models/User.js';
-import bcrypt from 'bcryptjs'; // Using bcryptjs to match your User model
+import User from '../database/models/UserModel.js';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config.js';
 
