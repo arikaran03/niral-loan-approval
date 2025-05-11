@@ -5,7 +5,11 @@ import mongodbConnect from "./database/db.js";
 import cookieParser from "cookie-parser";
 import responseTime from "response-time";
 
-import { authMiddleware, attachUser, errorHandler } from "./middlewares/auth.js";
+import {
+  authMiddleware,
+  attachUser,
+  errorHandler,
+} from "./middlewares/auth.js";
 
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
@@ -15,7 +19,11 @@ import loanSubmissionRoutes from "./routes/loanSubmission.routes.js";
 import imageRoutes from "./routes/Image.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import openAIRoutes from "./routes/openai.routes.js";
-import { applicantRepaymentRoutes, adminRepaymentRoutes } from './routes/loanRepayment.routes.js';
+import {
+  applicantRepaymentRoutes,
+  adminRepaymentRoutes,
+} from "./routes/loanRepayment.routes.js";
+import govSchemaRoutes from "./routes/schema.routes.js";
 
 mongodbConnect();
 
@@ -26,9 +34,11 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // Response time tracking
-app.use(responseTime((req, res, time) => {
-  res.responseTime = time.toFixed(2);
-}));
+app.use(
+  responseTime((req, res, time) => {
+    res.responseTime = time.toFixed(2);
+  })
+);
 
 // Morgan logging (skip OPTIONS)
 morgan.token("response-time", (req, res) => `${res.responseTime}ms`);
@@ -54,24 +64,29 @@ const allowedOrigins = [
   "https://docusift-groove.vercel.app",
 ];
 
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
-  allowedHeaders: ["Content-Type","Authorization"],
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  })
+);
 
 // Handle preflight requests
 app.options("*", (req, res) => {
-  res.header("Access-Control-Allow-Origin",   req.headers.origin);
-  res.header("Access-Control-Allow-Methods",  "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  res.header("Access-Control-Allow-Headers",  "Content-Type,Authorization");
+  res.header("Access-Control-Allow-Origin", req.headers.origin);
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+  );
+  res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
   res.header("Access-Control-Allow-Credentials", "true");
   res.sendStatus(204);
 });
@@ -106,11 +121,12 @@ app.use("/api/image", imageRoutes);
 // Admin-only dashboard stats
 app.use("/api/admin", adminRoutes);
 
-app.use('/api/application', openAIRoutes);
+app.use("/api/application", openAIRoutes);
 
-app.use('/api/repayments', applicantRepaymentRoutes); // For applicant-facing endpoints
+app.use("/api/repayments", applicantRepaymentRoutes); // For applicant-facing endpoints
 
-app.use('/api/admin/repayments', adminRepaymentRoutes); // For admin-facing endpoints
+app.use("/api/admin/repayments", adminRepaymentRoutes); // For admin-facing endpoints
+app.use("/api/document", govSchemaRoutes);
 
 // Global error handler (catches both express-jwt errors and any thrown below)
 app.use(errorHandler);
