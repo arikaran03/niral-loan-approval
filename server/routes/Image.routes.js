@@ -1,7 +1,7 @@
 // src/routes/image.routes.js
 import express from 'express';
 import multer from 'multer';
-import Image from '../database/models/Image.js';
+import Image from '../database/models/ImageModel.js';
 
 const router = express.Router();
 // Multer in-memory storage for direct buffer access

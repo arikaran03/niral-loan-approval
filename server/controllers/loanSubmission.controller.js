@@ -1,7 +1,6 @@
 // src/controllers/loanSubmission.controller.js
-import LoanSubmission from '../database/models/LoanSubmission.js';
-import Loan from '../database/models/Loan.js';
-import Image from '../database/models/Image.js'; // Kept for potential future use or consistency
+import LoanSubmission from '../database/models/LoanSubmissionModel.js';
+import Loan from '../database/models/LoanModel.js';
 import mongoose from 'mongoose';
 // Correctly import the named export from loanRepayment.controller.js
 import { createLoanRepaymentRecordInternal } from './loanRepayment.controller.js'; 

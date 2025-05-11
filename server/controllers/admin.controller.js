@@ -1,5 +1,5 @@
-import Loan from '../database/models/Loan.js';
-import LoanSubmission from '../database/models/LoanSubmission.js';
+import Loan from '../database/models/LoanModel.js';
+import LoanSubmission from '../database/models/LoanSubmissionModel.js';
 
 export async function getDashboardStats(req, res) {
   try {

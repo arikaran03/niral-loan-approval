@@ -1,8 +1,5 @@
 // src/controllers/loanRepayment.controller.js
-import LoanRepayment from '../database/models/LoanRepayment.js';
-import LoanSubmission from '../database/models/LoanSubmission.js';
-import Loan from '../database/models/Loan.js';
-import User from '../database/models/User.js';
+import LoanRepayment from '../database/models/LoanRepaymentModel.js';
 import mongoose from 'mongoose';
 
 // Helper function for error responses
