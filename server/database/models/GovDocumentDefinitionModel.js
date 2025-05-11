@@ -39,6 +39,11 @@ const GovDocumentSchemaDefinition = new mongoose.Schema(
           required: true,
           trim: true,
         },
+        prompt: {
+          type: String,
+          required: true,
+          trim: true,
+        },
         // Optional: Specify the expected data type (e.g., 'text', 'number', 'date')
         type: {
           type: String,

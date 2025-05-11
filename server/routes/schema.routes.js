@@ -1,7 +1,7 @@
 // schema.routes.js
 import express from "express";
 const router = express.Router();
-import * as schemaController from "../controllers/schema.controller"; // Adjust path as needed and import all exports
+import * as schemaController from "../controllers/schema.controller.js"; // Adjust path as needed and import all exports
 
 // --- Routes for Schema Definitions ---
 

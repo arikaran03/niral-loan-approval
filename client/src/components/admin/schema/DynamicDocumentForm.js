@@ -10,7 +10,8 @@ import {
   Spinner,
   Alert,
 } from "react-bootstrap";
-import { axiosInstance } from "../../../config.js";
+import { axiosInstance } from "../../../config.js"; // Assuming axiosInstance is correctly configured
+
 // Define the possible field types based on your schema
 const FIELD_TYPES = [
   "text",
@@ -80,6 +81,7 @@ const DynamicDocumentForm = () => {
         delete newState.fields[index][name];
         // If no more errors for this field index, clean up the field index entry
         if (Object.keys(newState.fields[index]).length === 0) {
+          // Use delete operator to remove the property
           delete newState.fields[index];
           // If no more errors in fields array, clean up the fields entry
           if (Object.keys(newState.fields).length === 0) {
@@ -98,6 +100,7 @@ const DynamicDocumentForm = () => {
       {
         key: "",
         label: "",
+        prompt: "", // Added prompt field
         type: "text", // Default type
         required: false,
         options: [], // Initialize options array
@@ -114,8 +117,11 @@ const DynamicDocumentForm = () => {
     setValidationErrors((prev) => {
       const newState = { ...prev };
       if (newState.fields) {
+        // Filter out the error entry for the removed index
         const newFieldErrors = newState.fields.filter((_, i) => i !== index);
         if (newFieldErrors.length > 0) {
+          // Re-index the remaining errors if necessary (though not strictly needed for this validation structure)
+          // For simplicity, we'll just assign the filtered array.
           newState.fields = newFieldErrors;
         } else {
           delete newState.fields;
@@ -196,6 +202,11 @@ const DynamicDocumentForm = () => {
         currentFieldErrors.label = "Label is required.";
         isValid = false;
       }
+      // Prompt is generally expected if a field exists
+      if (!field.prompt || !field.prompt.trim()) {
+        currentFieldErrors.prompt = "Prompt is required for the field.";
+        isValid = false;
+      }
       // Type is required by schema, default is text, so this check might be redundant if default works
       if (!field.type) {
         currentFieldErrors.type = "Type is required.";
@@ -250,11 +261,16 @@ const DynamicDocumentForm = () => {
     });
 
     if (fieldErrors.length > 0) {
-      errors.fields = fieldErrors;
+      // Filter out empty error objects before assigning
+      errors.fields = fieldErrors.filter((err) => Object.keys(err).length > 0);
+      if (errors.fields.length === 0) {
+        delete errors.fields; // Remove fields key if no actual field errors remain
+      }
     }
 
     setValidationErrors(errors);
-    return isValid;
+    // Return true only if there are no errors at all
+    return Object.keys(errors).length === 0;
   };
 
   // Handle form submission
@@ -280,6 +296,7 @@ const DynamicDocumentForm = () => {
       fields: fields.map((field) => ({
         key: field.key.trim(),
         label: field.label.trim(),
+        prompt: field.prompt.trim(), // Include prompt field
         type: field.type,
         required: field.required,
         options: field.options.length > 0 ? field.options : undefined, // Send options only if present
@@ -340,6 +357,23 @@ const DynamicDocumentForm = () => {
       console.error("Submission config:", error.config);
     } finally {
       setLoading(false); // End loading state
+    }
+  };
+
+  // Helper function to determine the HTML input type for min/max values
+  // This function returns 'number' for number fields, 'date' for date fields,
+  // and 'text' for all other field types, leveraging browser native inputs.
+  const getMinMaxValueInputType = (fieldType) => {
+    switch (fieldType) {
+      case "number":
+        return "number";
+      case "date":
+        return "date";
+      // Add other types if their min/max should have specific input types
+      // case 'datetime': return 'datetime-local';
+      // case 'time': return 'time';
+      default:
+        return "text"; // Default to text for all other types
     }
   };
 
@@ -497,6 +531,40 @@ const DynamicDocumentForm = () => {
                 </Row>
 
                 <Row>
+                  <Col md={12}>
+                    {" "}
+                    {/* Prompt field takes full width */}
+                    <Form.Group
+                      className="mb-3"
+                      controlId={`fieldPrompt_${index}`}
+                    >
+                      <Form.Label>
+                        Prompt <span className="text-danger">*</span>{" "}
+                        {/* Assuming prompt is required */}
+                      </Form.Label>
+                      <Form.Control
+                        type="text"
+                        name="prompt"
+                        value={field.prompt}
+                        onChange={(e) => handleFieldChange(index, e)}
+                        isInvalid={
+                          !!(
+                            validationErrors.fields &&
+                            validationErrors.fields[index] &&
+                            validationErrors.fields[index].prompt
+                          )
+                        }
+                      />
+                      <Form.Control.Feedback type="invalid">
+                        {validationErrors.fields &&
+                          validationErrors.fields[index] &&
+                          validationErrors.fields[index].prompt}
+                      </Form.Control.Feedback>
+                    </Form.Group>
+                  </Col>
+                </Row>
+
+                <Row>
                   <Col md={4}>
                     <Form.Group
                       className="mb-3"
@@ -579,7 +647,7 @@ const DynamicDocumentForm = () => {
                   </Form.Group>
                 )}
 
-                {/* min_value and max_value inputs */}
+                {/* min_value and max_value inputs - Dynamically change type */}
                 <Row>
                   <Col md={6}>
                     <Form.Group
@@ -590,7 +658,8 @@ const DynamicDocumentForm = () => {
                         Min Value <span className="text-danger">*</span>
                       </Form.Label>
                       <Form.Control
-                        type="text" // Input type is text as per your schema definition
+                        // Dynamically set the input type based on the field's selected type
+                        type={getMinMaxValueInputType(field.type)}
                         name="min_value"
                         value={field.min_value}
                         onChange={(e) => handleFieldChange(index, e)}
@@ -601,6 +670,8 @@ const DynamicDocumentForm = () => {
                             validationErrors.fields[index].min_value
                           )
                         }
+                        // Add step="any" for number inputs to allow decimals
+                        step={field.type === "number" ? "any" : undefined}
                       />
                       <Form.Control.Feedback type="invalid">
                         {validationErrors.fields &&
@@ -618,7 +689,8 @@ const DynamicDocumentForm = () => {
                         Max Value <span className="text-danger">*</span>
                       </Form.Label>
                       <Form.Control
-                        type="text" // Input type is text as per your schema definition
+                        // Dynamically set the input type based on the field's selected type
+                        type={getMinMaxValueInputType(field.type)}
                         name="max_value"
                         value={field.max_value}
                         onChange={(e) => handleFieldChange(index, e)}
@@ -629,6 +701,8 @@ const DynamicDocumentForm = () => {
                             validationErrors.fields[index].max_value
                           )
                         }
+                        // Add step="any" for number inputs to allow decimals
+                        step={field.type === "number" ? "any" : undefined}
                       />
                       <Form.Control.Feedback type="invalid">
                         {validationErrors.fields &&

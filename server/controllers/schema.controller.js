@@ -1,5 +1,4 @@
-// schema.controller.js
-import GovDocumentDefinitionModel from "../database/models/GovDocumentSchemaDefinitionModel"; // Adjust path as needed
+import GovDocumentDefinitionModel from "../database/models/GovDocumentDefinitionModel.js"; // Adjust path as needed
 
 // --- Controller function to handle creating a new Schema Definition ---
 // This function will be called by the router when a POST request hits /api/document/schema-definition
@@ -27,20 +26,20 @@ export const createSchemaDefinition = async (req, res) => {
     console.error(
       "Validation Error: Missing required top-level fields or fields is not an array."
     );
-    return res
-      .status(400)
-      .json({
-        message:
-          "Missing required fields: schema_id, name, description, or fields array.",
-      });
+    return res.status(400).json({
+      message:
+        "Missing required fields: schema_id, name, description, or fields array.",
+    });
   }
 
   // Basic validation for fields array content
   for (const field of fields) {
     // Check for the presence of required properties in each field object
+    // Added check for 'prompt' here as well for early feedback
     if (
       !field.key ||
       !field.label ||
+      !field.prompt ||
       !field.type ||
       field.min_value === undefined ||
       field.max_value === undefined
@@ -49,12 +48,20 @@ export const createSchemaDefinition = async (req, res) => {
         "Validation Error: Missing required field properties in fields array.",
         field
       );
-      return res
-        .status(400)
-        .json({
-          message:
-            "Each field in the fields array must have key, label, type, min_value, and max_value.",
-        });
+      // Include which field property is missing for better debugging
+      let missingProp = "";
+      if (!field.key) missingProp = "key";
+      else if (!field.label) missingProp = "label";
+      else if (!field.prompt) missingProp = "prompt"; // Check for prompt
+      else if (!field.type) missingProp = "type";
+      else if (field.min_value === undefined) missingProp = "min_value";
+      else if (field.max_value === undefined) missingProp = "max_value";
+
+      return res.status(400).json({
+        message: `Field "${
+          field.label || field.key || "Unknown field"
+        }" is missing the required property: ${missingProp}.`,
+      });
     }
     // Optional: Add more specific validation based on field.type if needed
     // For select/multiselect, check if options array is present, is an array, and is not empty
@@ -68,11 +75,9 @@ export const createSchemaDefinition = async (req, res) => {
         "Validation Error: Options are required for select/multiselect types.",
         field
       );
-      return res
-        .status(400)
-        .json({
-          message: `Field "${field.label}" (key: ${field.key}) requires options for type "${field.type}".`,
-        });
+      return res.status(400).json({
+        message: `Field "${field.label}" (key: ${field.key}) requires options for type "${field.type}".`,
+      });
     }
     // You could add checks here for min_value/max_value format based on type if they were not strictly strings
   }
@@ -88,6 +93,7 @@ export const createSchemaDefinition = async (req, res) => {
       fields: fields.map((field) => ({
         key: field.key.trim(), // Trim whitespace from field key
         label: field.label.trim(), // Trim whitespace from field label
+        prompt: field.prompt.trim(), // Include the prompt field
         type: field.type, // Use the provided type
         required: field.required || false, // Default required to false if not provided
         options: field.options, // Pass the options array directly
@@ -130,11 +136,9 @@ export const createSchemaDefinition = async (req, res) => {
     }
 
     // Handle any other unexpected errors (e.g., database connection issues)
-    res
-      .status(500)
-      .json({
-        message: "An error occurred while saving the schema definition.",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "An error occurred while saving the schema definition.",
+      error: error.message,
+    });
   }
 };
