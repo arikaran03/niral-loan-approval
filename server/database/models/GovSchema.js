@@ -1,5 +1,3 @@
-import mongoose from "mongoose";
-
 // Schema to define the structure of a dynamic government document type
 // This will be created by the admin when they add a new required document type dynamically.
 const GvtDocumentSchemaDefinition = new mongoose.Schema(
@@ -21,10 +19,10 @@ const GvtDocumentSchemaDefinition = new mongoose.Schema(
     description: {
       type: String,
       trim: true,
+      required: true,
+      default: undefined, // Explicit default
     },
-    // Array of fields required for this document type.
-    // Each field will have a key (the field name/label) and potentially validation rules or type hints.
-    // We'll store these as key-value pairs to allow flexibility.
+    // Array of fields required for this document type, using the dynamicDocumentFieldSchema
     fields: [
       {
         // The key or name of the field (e.g., 'tc_number', 'student_name', 'issuing_authority')
@@ -82,25 +80,20 @@ const GvtDocumentSubmission = new mongoose.Schema(
     schema_id: {
       type: String, // Storing schema_id directly for easier lookup/embedding
       required: true,
-      ref: "GvtDocumentSchemaDefinition", // Optional: Can add a ref if you need to populate the definition
+      trim: true, // Added trim
+      // ref: "GvtDocumentSchemaDefinition", // Optional: Can add a ref if you need to populate. Removed for now.
     },
     // The actual data submitted by the user for the fields defined in the schema definition.
-    // Stored as a Map or Object for flexible key-value storage.
-    // Using Map is generally preferred in Mongoose for arbitrary keys.
     submitted_data: {
       type: Map, // Use Map to store key-value pairs dynamically
       of: mongoose.Schema.Types.Mixed, // Allows storing various data types (string, number, boolean, etc.)
     },
-    // Optional: Reference to an uploaded file if the document type involves a file upload
+    // Optional: Reference to an uploaded file (now a string/text identifier)
     fileRef: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "File", // *** CHANGE 'File' TO YOUR ACTUAL FILE MODEL NAME ***
-      required: function () {
-        // This field is required if the corresponding GvtDocumentSchemaDefinition
-        // has any field with type 'image' or 'document'.
-        // This check might be better handled in application logic before saving.
-        return false; // Default to false, handle required check in service layer
-      },
+      type: String, // Changed from ObjectId to String
+      trim: true, // Added trim for String type
+      // ref: "File", // Removed ref
+      required: false, // Simplified required condition, was a function returning false
     },
     // Optional: Add status related to this specific dynamic document upload/verification
     verificationStatus: {
@@ -114,6 +107,7 @@ const GvtDocumentSubmission = new mongoose.Schema(
     // Optional: Any notes or reasons for verification status
     verificationNotes: {
       type: String,
+      trim: true, // Added trim
     },
   },
   {
@@ -122,21 +116,17 @@ const GvtDocumentSubmission = new mongoose.Schema(
 );
 
 // --- Main Loan Submission Schema (Modified) ---
-// Assuming you have a main LoanSubmission schema similar to the one in your template,
-// we will add the GvtDocumentSubmission array to it.
-
-// Assuming existing sub-schemas like submissionFieldSchema, requiredDocumentRefSchema, stageHistorySchema
-// (These are based on the schemas provided in your image)
-
 const submissionFieldSchema = new mongoose.Schema(
   {
     field_id: {
       type: String,
       required: true,
+      trim: true, // Added trim
     },
     field_label: {
       type: String,
       required: true,
+      trim: true, // Added trim
     },
     type: {
       type: String,
@@ -161,10 +151,13 @@ const submissionFieldSchema = new mongoose.Schema(
         return this.type !== "image" && this.type !== "document";
       },
     },
+    // fileRef for custom fields, now a string/text identifier
     fileRef: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "File", // *** CHANGE 'File' TO YOUR ACTUAL FILE MODEL NAME ***
+      type: String, // Changed from ObjectId to String
+      trim: true, // Added trim for String type
+      // ref: "File", // Removed ref
       required: function () {
+        // This logic remains: a file reference (string) is needed if type is image/document
         return this.type === "image" || this.type === "document";
       },
     },
@@ -180,17 +173,20 @@ const requiredDocumentRefSchema = new mongoose.Schema(
       // The 'name' of the required document (e.g., "PAN Card")
       type: String,
       required: true,
+      trim: true, // Added trim
     },
+    // fileRef for standard required documents, now a string/text identifier
     fileRef: {
-      // The ObjectId referencing the uploaded file
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "File", // *** CHANGE 'File' TO YOUR ACTUAL FILE MODEL NAME ***
+      type: String, // Changed from ObjectId to String
       required: true,
+      trim: true, // Added trim for String type
+      // ref: "File", // Removed ref
     },
     // Optional: Add status related to this specific document upload/verification if needed
     verificationStatus: {
       type: String,
       enum: ["pending", "verified", "failed"],
+      default: "pending", // Added default
     },
     verifiedAt: Date,
   },
@@ -207,8 +203,8 @@ const stageHistorySchema = new mongoose.Schema(
       required: true,
     },
     changed_by: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      type: mongoose.Schema.Types.ObjectId, // Assuming User ID is still an ObjectId
+      ref: "User", // *** CHANGE 'User' TO YOUR ACTUAL USER MODEL NAME ***
       required: true,
     },
     changed_at: {
@@ -224,14 +220,14 @@ const stageHistorySchema = new mongoose.Schema(
 const LoanSubmissionSchema = new mongoose.Schema(
   {
     loan_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Loan",
+      type: mongoose.Schema.Types.ObjectId, // Assuming Loan ID is still an ObjectId
+      ref: "Loan", // *** CHANGE 'Loan' TO YOUR ACTUAL LOAN MODEL NAME ***
       required: true,
       index: true,
     },
     user_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      type: mongoose.Schema.Types.ObjectId, // Assuming User ID is still an ObjectId
+      ref: "User", // *** CHANGE 'User' TO YOUR ACTUAL USER MODEL NAME ***
       required: true,
       index: true,
     },
@@ -266,20 +262,21 @@ const LoanSubmissionSchema = new mongoose.Schema(
       default: [],
     },
     approver_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      type: mongoose.Schema.Types.ObjectId, // Assuming User ID is still an ObjectId
+      ref: "User", // *** CHANGE 'User' TO YOUR ACTUAL USER MODEL NAME ***
     },
     approval_date: {
       type: Date,
     },
     rejection_reason: {
       type: String,
+      trim: true, // Added trim
     },
   },
   {
     timestamps: {
       createdAt: "created_at",
-      updatedAt: "updated_at",
+      updated_at: "updated_at",
     },
   }
 );
@@ -297,7 +294,7 @@ const LoanSubmissionModel = mongoose.model(
 // You would also need models for 'Loan', 'User', and 'File' if they don't exist yet.
 // const LoanModel = mongoose.model('Loan', LoanSchema); // Assuming LoanSchema exists from your template
 // const UserModel = mongoose.model('User', UserSchema); // Assuming UserSchema exists
-// const FileModel = mongoose.model('File', FileSchema); // Assuming FileSchema exists for file uploads
+// const FileModel = mongoose.model('File', FileSchema); // Assuming FileSchema exists for file uploads (though fileRef is now String)
 
 export {
   GvtDocumentSchemaDefinitionModel,
