@@ -41,6 +41,11 @@ export async function createLoanRepaymentRecordInternal(
         if (!userId) {
             throw new Error("User ID is missing for repayment creation.");
         }
+        if (disbursedAmount <= 0 || loanProductDetails.tenure_months <= 0 || calculatedEMI <= 0) {
+             console.error("Invalid loan terms for repayment schedule generation:", {disbursedAmount, tenure: loanProductDetails.tenure_months, calculatedEMI});
+             throw new Error("Cannot generate repayment schedule with invalid loan terms (amount, tenure, or EMI is zero or less).");
+        }
+
 
         const newRepayment = new LoanRepayment({
             loan_submission_id: loanSubmissionId,
@@ -57,12 +62,14 @@ export async function createLoanRepaymentRecordInternal(
             loan_repayment_status: 'Active',
             penalty_configuration: loanProductDetails.penalty_config || { 
                 late_payment_fee_type: 'None', 
-                late_payment_grace_period_days: 0 
+                late_payment_grace_period_days: 0,
+                applies_to_missed_full_emi: true
             },
             prepayment_configuration: loanProductDetails.prepayment_config || { 
                 allow_prepayment: true, 
                 prepayment_fee_type: 'None',
-                lock_in_period_months: 0
+                lock_in_period_months: 0,
+                allow_part_prepayment: true
             },
             internal_notes: adminUserId ? [{
                 text: `Repayment schedule initiated by admin ${adminUserId}.`,
@@ -72,60 +79,68 @@ export async function createLoanRepaymentRecordInternal(
         });
 
         // --- Generate Amortization Schedule ---
-        if (newRepayment.original_tenure_months > 0 && newRepayment.disbursed_amount > 0 && newRepayment.initial_calculated_emi > 0) {
-            const P = newRepayment.disbursed_amount;
-            const R = newRepayment.agreed_interest_rate_pa / 12 / 100; // monthly rate
-            const N = newRepayment.original_tenure_months;
-            const EMI = newRepayment.initial_calculated_emi;
+        const P = newRepayment.disbursed_amount;
+        const R = newRepayment.agreed_interest_rate_pa / 12 / 100; // monthly rate
+        const N = newRepayment.original_tenure_months;
+        const EMI = newRepayment.initial_calculated_emi;
 
-            let balance = P;
-            for (let i = 1; i <= N; i++) {
-                const interest_for_month = balance * R;
-                let principal_for_month = EMI - interest_for_month;
-                
-                // Adjust last installment's principal to ensure balance is zero
-                if (i === N) {
-                    principal_for_month = balance;
-                }
-                
-                balance -= principal_for_month;
-                // Minor adjustment for floating point inaccuracies for the very last balance
-                if (i === N && Math.abs(balance) < 0.01) {
-                    principal_for_month += balance; // Add remaining tiny balance to last principal payment
-                    balance = 0;
-                }
-
-
-                const installment_due_date = new Date(newRepayment.repayment_start_date);
-                installment_due_date.setMonth(newRepayment.repayment_start_date.getMonth() + (i - 1));
-                
-                const currentEMI = (i === N && N > 1 && (Math.abs(balance) > 0.01 || principal_for_month + interest_for_month !== EMI)) ? 
-                                   (Math.round((principal_for_month + interest_for_month) * 100) / 100) : EMI;
-
-
-                newRepayment.scheduled_installments.push({
-                    installment_number: i,
-                    due_date: installment_due_date,
-                    principal_due: Math.max(0, Math.round(principal_for_month * 100) / 100),
-                    interest_due: Math.max(0, Math.round(interest_for_month * 100) / 100),
-                    total_emi_due: currentEMI,
-                    status: 'Pending',
-                    principal_paid: 0,
-                    interest_paid: 0,
-                    penalty_due: 0,
-                    penalty_paid: 0,
-                    principal_waived: 0,
-                    interest_waived: 0,
-                    penalty_waived: 0,
-                    is_penalty_applied: false,
-                });
+        let balance = P;
+        for (let i = 1; i <= N; i++) {
+            const interest_for_month = Math.max(0, balance * R); // Ensure interest is not negative
+            let principal_for_month = EMI - interest_for_month;
+            
+            if (principal_for_month < 0 && balance > 0) { // If EMI doesn't cover interest (highly unlikely with correct EMI calc)
+                principal_for_month = 0; // Pay only interest
             }
-             if (newRepayment.scheduled_installments.length > 0) {
-                newRepayment.next_due_date = newRepayment.scheduled_installments[0].due_date;
-                newRepayment.next_emi_amount = newRepayment.scheduled_installments[0].total_emi_due;
+            
+            // Ensure principal payment doesn't exceed remaining balance
+            if (principal_for_month > balance) {
+                principal_for_month = balance;
             }
+            
+            let currentEMIForInstallment = EMI;
+            // Adjust last installment's principal and EMI to ensure balance is precisely zero
+            if (i === N) {
+                principal_for_month = balance; // Remaining balance is the principal for the last EMI
+                currentEMIForInstallment = principal_for_month + interest_for_month; // Last EMI might be slightly different
+            }
+            
+            balance -= principal_for_month;
+            
+            // Final check to zero out balance if it's a tiny fraction due to floating point math
+            if (i === N && Math.abs(balance) < 0.01) {
+                principal_for_month += balance;
+                currentEMIForInstallment += balance;
+                balance = 0;
+            }
+
+            const installment_due_date = new Date(newRepayment.repayment_start_date);
+            installment_due_date.setMonth(newRepayment.repayment_start_date.getMonth() + (i - 1));
+            
+            newRepayment.scheduled_installments.push({
+                installment_number: i,
+                due_date: installment_due_date,
+                principal_due: Math.max(0, Math.round(principal_for_month * 100) / 100),
+                interest_due: Math.max(0, Math.round(interest_for_month * 100) / 100),
+                total_emi_due: Math.max(0, Math.round(currentEMIForInstallment * 100) / 100),
+                status: 'Pending',
+                principal_paid: 0,
+                interest_paid: 0,
+                penalty_due: 0,
+                penalty_paid: 0,
+                principal_waived: 0,
+                interest_waived: 0,
+                penalty_waived: 0,
+                is_penalty_applied: false,
+            });
+        }
+         if (newRepayment.scheduled_installments.length > 0) {
+            newRepayment.next_due_date = newRepayment.scheduled_installments[0].due_date;
+            newRepayment.next_emi_amount = newRepayment.scheduled_installments[0].total_emi_due;
         } else {
-            console.warn(`Skipping amortization schedule generation for submission ${loanSubmissionId} due to invalid terms (tenure: ${newRepayment.original_tenure_months}, amount: ${newRepayment.disbursed_amount}, EMI: ${newRepayment.initial_calculated_emi})`);
+             console.warn(`Amortization schedule resulted in 0 installments for submission ${loanSubmissionId}. Check loan terms.`);
+             newRepayment.next_due_date = null;
+             newRepayment.next_emi_amount = 0;
         }
         
         await newRepayment.save();
@@ -140,7 +155,6 @@ export async function createLoanRepaymentRecordInternal(
 
 const loanRepaymentController = {
     getMyLoanRepayments: async (req, res) => {
-        // ... (same as before)
         try {
             const userId = req.user._id; 
             if (!userId) {
@@ -161,7 +175,6 @@ const loanRepaymentController = {
     },
 
     getLoanRepaymentDetailsForApplicant: async (req, res) => {
-        // ... (same as before)
         try {
             const { repaymentId } = req.params;
             const userId = req.user._id; 
@@ -187,31 +200,30 @@ const loanRepaymentController = {
     makePaymentForLoan: async (req, res) => {
         try {
             const { repaymentId } = req.params;
-            const { amount, paymentMethod, referenceId, paymentModeDetails } = req.body;
+            let { amount, paymentMethod, referenceId, paymentModeDetails } = req.body;
             const userId = req.user._id; 
+            amount = Number(amount); // Ensure amount is a number
 
             if (!mongoose.Types.ObjectId.isValid(repaymentId)) {
                 return res.status(400).json({ success: false, message: "Invalid repayment ID format." });
             }
             if (!userId) { return res.status(401).json({ success: false, message: "User not authenticated." }); }
-            if (!amount || typeof amount !== 'number' || amount <= 0) {
+            if (isNaN(amount) || amount <= 0) {
                 return res.status(400).json({ success: false, message: "Invalid payment amount." });
             }
             if (!paymentMethod) {
                 return res.status(400).json({ success: false, message: "Payment method is required." });
             }
 
-            const repayment = await LoanRepayment.findById(repaymentId); // Find by ID, ownership check later if needed for admin
+            const repayment = await LoanRepayment.findById(repaymentId);
             if (!repayment) {
                 return res.status(404).json({ success: false, message: "Loan repayment record not found." });
             }
-             // Ensure the payment is made by the loan owner if it's an applicant route
             if (repayment.user_id.toString() !== userId.toString()) {
-                return res.status(403).json({ success: false, message: "Access denied. You are not the owner of this loan repayment." });
+                return res.status(403).json({ success: false, message: "Access denied." });
             }
-
             if (['Fully Repaid', 'Foreclosed', 'Write-Off'].includes(repayment.loan_repayment_status)) {
-                return res.status(400).json({ success: false, message: `Loan is already ${repayment.loan_repayment_status}. No further payments accepted.` });
+                return res.status(400).json({ success: false, message: `Loan is already ${repayment.loan_repayment_status}.` });
             }
 
             const newTransaction = {
@@ -220,78 +232,102 @@ const loanRepaymentController = {
                 payment_method: paymentMethod,
                 reference_id: referenceId,
                 payment_mode_details: paymentModeDetails,
-                status: 'Cleared', // Simulate payment as Cleared for better UX
+                status: 'Cleared', // Assuming direct clearance for simulation
                 created_by_type: 'User', 
-                // Allocation will be done by processPayment method
-                principal_component: 0, // Initialize, to be set by processPayment
-                interest_component: 0,  // Initialize
-                penalty_component: 0,   // Initialize
+                principal_component: 0, 
+                interest_component: 0,  
+                penalty_component: 0,   
+                unallocated_amount: 0
             };
-            repayment.payment_transactions.push(newTransaction);
-            const savedTransaction = repayment.payment_transactions[repayment.payment_transactions.length - 1];
             
-            // --- Conceptual Call to Process Payment ---
-            // In a real system, this method would be robust and handle all financial logic.
-            // It should be an instance method on the LoanRepayment model.
-            if (typeof repayment.processPayment === 'function') {
-                await repayment.processPayment(savedTransaction._id); // Pass transaction ID
-            } else {
-                // Simplified fallback if processPayment model method is not implemented yet
-                console.warn("LoanRepayment.processPayment() method not implemented. Performing simplified update.");
-                // This simplified update is NOT a substitute for proper financial processing.
-                let remainingAmountToAllocate = amount;
-                
-                // Find first pending/overdue installment
-                const firstPendingInstallment = repayment.scheduled_installments.find(
-                    inst => ['Pending', 'Overdue', 'Partially Paid'].includes(inst.status)
-                );
+            // --- Simplified Payment Processing Logic ---
+            // This should ideally be a robust instance method on the LoanRepayment model.
+            let remainingAmountToAllocate = amount;
 
-                if (firstPendingInstallment) {
-                    const principalNeeded = firstPendingInstallment.principal_due - firstPendingInstallment.principal_paid;
-                    const interestNeeded = firstPendingInstallment.interest_due - firstPendingInstallment.interest_paid;
+            for (const installment of repayment.scheduled_installments) {
+                if (remainingAmountToAllocate <= 0) break;
+                if (['Pending', 'Overdue', 'Partially Paid'].includes(installment.status)) {
                     
-                    const interestPaidNow = Math.min(remainingAmountToAllocate, interestNeeded);
-                    savedTransaction.interest_component += interestPaidNow;
-                    firstPendingInstallment.interest_paid += interestPaidNow;
-                    remainingAmountToAllocate -= interestPaidNow;
+                    // 1. Allocate to Penalty Due (if any, not implemented here yet)
+                    // const penaltyDueForInstallment = installment.penalty_due - installment.penalty_paid;
+                    // if (penaltyDueForInstallment > 0) { ... }
 
+                    // 2. Allocate to Interest Due
+                    const interestDueForInstallment = installment.interest_due - installment.interest_paid;
+                    if (interestDueForInstallment > 0) {
+                        const interestPaidNow = Math.min(remainingAmountToAllocate, interestDueForInstallment);
+                        installment.interest_paid += interestPaidNow;
+                        newTransaction.interest_component += interestPaidNow;
+                        remainingAmountToAllocate -= interestPaidNow;
+                    }
+
+                    // 3. Allocate to Principal Due
                     if (remainingAmountToAllocate > 0) {
-                        const principalPaidNow = Math.min(remainingAmountToAllocate, principalNeeded);
-                        savedTransaction.principal_component += principalPaidNow;
-                        firstPendingInstallment.principal_paid += principalPaidNow;
-                        remainingAmountToAllocate -= principalPaidNow;
+                        const principalDueForInstallment = installment.principal_due - installment.principal_paid;
+                        if (principalDueForInstallment > 0) {
+                            const principalPaidNow = Math.min(remainingAmountToAllocate, principalDueForInstallment);
+                            installment.principal_paid += principalPaidNow;
+                            newTransaction.principal_component += principalPaidNow;
+                            remainingAmountToAllocate -= principalPaidNow;
+                        }
                     }
-                     // Update installment status (simplified)
-                    if ((firstPendingInstallment.principal_due - firstPendingInstallment.principal_paid <= 0.01) &&
-                        (firstPendingInstallment.interest_due - firstPendingInstallment.interest_paid <= 0.01)) {
-                        firstPendingInstallment.status = 'Paid';
-                        firstPendingInstallment.last_payment_date_for_installment = new Date();
-                    } else if (firstPendingInstallment.principal_paid > 0 || firstPendingInstallment.interest_paid > 0) {
-                        firstPendingInstallment.status = 'Partially Paid';
-                    }
-                }
-                
-                savedTransaction.unallocated_amount = remainingAmountToAllocate > 0 ? remainingAmountToAllocate : 0;
+                    
+                    // Update installment status
+                    const outstandingPrincipalInInstallment = installment.principal_due - installment.principal_paid - installment.principal_waived;
+                    const outstandingInterestInInstallment = installment.interest_due - installment.interest_paid - installment.interest_waived;
+                    // const outstandingPenaltyInInstallment = installment.penalty_due - installment.penalty_paid - installment.penalty_waived;
 
-                repayment.total_principal_repaid += savedTransaction.principal_component;
-                repayment.total_interest_repaid += savedTransaction.interest_component;
-                repayment.current_outstanding_principal -= savedTransaction.principal_component;
-                if (repayment.current_outstanding_principal < 0) repayment.current_outstanding_principal = 0;
-                
-                if (repayment.current_outstanding_principal <= 0.01) { // Check for full repayment
-                    repayment.loan_repayment_status = 'Fully Repaid';
-                    repayment.actual_closure_date = new Date();
+                    if (outstandingPrincipalInInstallment <= 0.01 && outstandingInterestInInstallment <= 0.01 /* && outstandingPenaltyInInstallment <= 0.01 */) {
+                        installment.status = 'Paid';
+                        installment.last_payment_date_for_installment = new Date();
+                    } else if (installment.principal_paid > 0 || installment.interest_paid > 0 /* || installment.penalty_paid > 0 */) {
+                        installment.status = 'Partially Paid';
+                    }
                 }
             }
-            // --- End Conceptual Call ---
+            
+            newTransaction.unallocated_amount = Math.max(0, remainingAmountToAllocate); // Any excess payment
+
+            repayment.payment_transactions.push(newTransaction);
+            const savedTransaction = repayment.payment_transactions[repayment.payment_transactions.length - 1];
+
+            // Update overall loan aggregates
+            repayment.total_principal_repaid += newTransaction.principal_component;
+            repayment.total_interest_repaid += newTransaction.interest_component;
+            repayment.total_penalties_paid += newTransaction.penalty_component; // If penalties were handled
+
+            repayment.current_outstanding_principal = repayment.disbursed_amount - repayment.total_principal_repaid + repayment.total_principal_waived; // More accurate
+            if (repayment.current_outstanding_principal < 0.01) { // Using a small threshold for floating point
+                repayment.current_outstanding_principal = 0;
+                repayment.loan_repayment_status = 'Fully Repaid';
+                repayment.actual_closure_date = new Date();
+                repayment.next_due_date = null;
+                repayment.next_emi_amount = 0;
+            } else {
+                // Find next pending installment for next_due_date and next_emi_amount
+                const nextPendingInstallment = repayment.scheduled_installments.find(inst => inst.status === 'Pending');
+                if (nextPendingInstallment) {
+                    repayment.next_due_date = nextPendingInstallment.due_date;
+                    repayment.next_emi_amount = nextPendingInstallment.total_emi_due;
+                } else { // All installments might be Paid, Partially Paid, or Overdue
+                    const firstNotFullyPaid = repayment.scheduled_installments.find(inst => inst.status !== 'Paid' && inst.status !== 'Waived' && inst.status !== 'Cancelled');
+                    if (firstNotFullyPaid) {
+                         repayment.next_due_date = firstNotFullyPaid.due_date;
+                         repayment.next_emi_amount = firstNotFullyPaid.total_emi_due - (firstNotFullyPaid.principal_paid + firstNotFullyPaid.interest_paid);
+                    } else if (repayment.loan_repayment_status !== 'Fully Repaid') { // Should be caught by outstanding principal check
+                        repayment.next_due_date = null;
+                        repayment.next_emi_amount = 0;
+                    }
+                }
+            }
             
             repayment.last_payment_amount = amount;
-            repayment.last_payment_date = new Date();
+            repayment.last_payment_date = new Date(newTransaction.transaction_date);
             await repayment.save();
 
             res.status(201).json({
                 success: true,
-                message: "Payment recorded successfully. Loan details are being updated.",
+                message: "Payment recorded successfully. Loan details updated.",
                 data: { transactionId: savedTransaction._id, repaymentStatus: repayment.loan_repayment_status }
             });
         } catch (error) {
@@ -300,7 +336,7 @@ const loanRepaymentController = {
     },
 
     getForeclosureQuote: async (req, res) => {
-        // ... (same as before)
+        // ... (Implementation remains largely the same, ensure accruedInterest is accurately calculated if possible)
         try {
             const { repaymentId } = req.params;
             const userId = req.user._id;
@@ -329,18 +365,33 @@ const loanRepaymentController = {
                 switch (feeConfig.prepayment_fee_type) {
                     case 'FixedAmount': foreclosureFee = feeConfig.prepayment_fee_value; break;
                     case 'PercentageOfOutstandingPrincipal': foreclosureFee = (outstandingPrincipal * feeConfig.prepayment_fee_value) / 100; break;
-                    case 'PercentageOfPrepaidAmount': foreclosureFee = (outstandingPrincipal * feeConfig.prepayment_fee_value) / 100; break;
+                    case 'PercentageOfPrepaidAmount': foreclosureFee = (outstandingPrincipal * feeConfig.prepayment_fee_value) / 100; break; // For foreclosure, prepaid amount is outstanding
                 }
             }
             foreclosureFee = Math.round(foreclosureFee * 100) / 100;
-            // TODO: Implement accurate accrued interest calculation up to quote date.
-            const accruedInterest = repayment.accrued_interest_not_due || 0; 
+            
+            // TODO: Implement accurate accrued interest calculation up to the quote date.
+            // This is a placeholder. Real calculation needs daily interest accrual logic.
+            // For simplicity, if there's a next_due_date, calculate interest from last EMI logic or use accrued_interest_not_due.
+            let accruedInterest = repayment.accrued_interest_not_due || 0;
+            if (repayment.next_due_date && repayment.current_outstanding_principal > 0) {
+                // Simplified: Interest for part of the month. This needs to be precise.
+                // const daysSinceLastCycle = (new Date() - new Date(lastPaymentOrCycleDate)) / (1000 * 60 * 60 * 24);
+                // accruedInterest = (repayment.current_outstanding_principal * (repayment.agreed_interest_rate_pa / 100 / 365)) * daysSinceLastCycle;
+                // For now, using the stored accrued_interest_not_due if available.
+            }
+            accruedInterest = Math.round(accruedInterest * 100) / 100;
+
+
             const totalForeclosureAmount = outstandingPrincipal + accruedInterest + foreclosureFee;
 
             res.status(200).json({
                 success: true,
                 data: {
-                    repaymentId: repayment._id, outstandingPrincipal, accruedInterest, foreclosureFee,
+                    repaymentId: repayment._id, 
+                    outstandingPrincipal: Math.round(outstandingPrincipal * 100) / 100, 
+                    accruedInterest, 
+                    foreclosureFee,
                     totalForeclosureAmount: Math.round(totalForeclosureAmount * 100) / 100,
                     quoteValidUntil: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Example: 24 hours validity
                     notes: "Accrued interest is an estimate and may vary. Final settlement amount will be confirmed upon payment."
@@ -352,7 +403,7 @@ const loanRepaymentController = {
     },
 
     confirmForeclosure: async (req, res) => {
-        // ... (same as before, but ensure processPayment or similar logic is robust)
+        // ... (Implementation remains largely the same, but relies on the payment processing being accurate)
         try {
             const { repaymentId } = req.params;
             const { paymentDetails } = req.body; 
@@ -364,7 +415,7 @@ const loanRepaymentController = {
             if (!paymentDetails || !paymentDetails.amountPaid || !paymentDetails.paymentMethod) {
                 return res.status(400).json({ success: false, message: "Payment details are required." });
             }
-            const repayment = await LoanRepayment.findById(repaymentId); // Ownership check later if admin route
+            const repayment = await LoanRepayment.findById(repaymentId);
              if (!repayment) {
                 return res.status(404).json({ success: false, message: "Loan repayment record not found." });
             }
@@ -375,23 +426,33 @@ const loanRepaymentController = {
                 return res.status(400).json({ success: false, message: "Loan is already closed." });
             }
 
-            // Ideally, this would call a robust `repayment.handleForeclosure(paymentDetails)` model method.
-            // The method would record the transaction, verify amount against quote, update all balances to zero,
-            // set foreclosure_details, change loan_repayment_status, and cancel pending installments.
+            // This should ideally call a robust model method: await repayment.handleForeclosure(paymentDetails, userId);
+            // The model method would:
+            // 1. Record the transaction (as done below).
+            // 2. Verify paymentDetails.amountPaid against the actual foreclosure amount (outstanding + accrued interest + fees).
+            // 3. If verified, update all balances to zero.
+            // 4. Set foreclosure_details.
+            // 5. Change loan_repayment_status to 'Foreclosed'.
+            // 6. Update actual_closure_date.
+            // 7. Cancel any pending scheduled installments.
 
             // Simplified simulation:
+            const principalPaid = repayment.current_outstanding_principal; // Assume full principal is covered
+            const interestPaid = repayment.accrued_interest_not_due || 0; // Assume accrued interest is covered
+            // Foreclosure fee is separate, not part of principal/interest components of the loan itself typically
+
             const foreclosureTransaction = {
                 transaction_date: paymentDetails.paymentDate || new Date(),
                 amount_received: paymentDetails.amountPaid,
                 payment_method: paymentDetails.paymentMethod,
                 reference_id: paymentDetails.transactionReference,
-                status: 'Cleared', // Assuming payment confirmed for foreclosure
+                status: 'Cleared', 
                 created_by_type: 'User',
-                notes: `Foreclosure payment. Fee: ${paymentDetails.foreclosureFeePaid || 0}. Ref: ${paymentDetails.transactionReference}`,
-                principal_component: repayment.current_outstanding_principal, // Simplified, should be exact
-                interest_component: repayment.accrued_interest_not_due || 0, // Simplified
-                penalty_component: 0, // Assuming no penalties for this example
-                unallocated_amount: Math.max(0, paymentDetails.amountPaid - (repayment.current_outstanding_principal + (repayment.accrued_interest_not_due || 0) + (paymentDetails.foreclosureFeePaid || 0)))
+                notes: `Foreclosure payment. Fee Paid: ${paymentDetails.foreclosureFeePaid || 0}. Ref: ${paymentDetails.transactionReference}`,
+                principal_component: principalPaid, 
+                interest_component: interestPaid,
+                // penalty_component could be used for the foreclosure fee if it's treated as such in accounting
+                unallocated_amount: Math.max(0, paymentDetails.amountPaid - (principalPaid + interestPaid + (paymentDetails.foreclosureFeePaid || 0)))
             };
             repayment.payment_transactions.push(foreclosureTransaction);
             
@@ -406,9 +467,11 @@ const loanRepaymentController = {
             repayment.actual_closure_date = new Date(repayment.foreclosure_details.foreclosure_date);
             repayment.current_outstanding_principal = 0;
             repayment.accrued_interest_not_due = 0;
-            repayment.total_principal_repaid += foreclosureTransaction.principal_component; // Update aggregates
-            repayment.total_interest_repaid += foreclosureTransaction.interest_component;
-            // repayment.total_penalties_paid += ... (if foreclosure fee is treated as penalty)
+            repayment.total_principal_repaid += principalPaid; 
+            repayment.total_interest_repaid += interestPaid;
+            // If foreclosure_fee_paid is tracked as a penalty or separate fee category:
+            // repayment.total_penalties_paid += paymentDetails.foreclosureFeePaid || 0;
+
 
             repayment.scheduled_installments.forEach(inst => {
                 if (!['Paid', 'Paid Late', 'Waived'].includes(inst.status)) { 
@@ -416,7 +479,7 @@ const loanRepaymentController = {
                 }
             });
             repayment.next_due_date = null;
-            repayment.next_emi_amount = null;
+            repayment.next_emi_amount = 0;
 
             await repayment.save();
             res.status(200).json({ success: true, message: "Loan successfully foreclosed.", data: repayment });
@@ -425,7 +488,6 @@ const loanRepaymentController = {
         }
     },
     
-    // ... other admin controllers remain largely the same but should use robust model methods ...
     adminGetAllLoanRepayments: async (req, res) => {
         try {
             const { status, userId, page = 1, limit = 10, loanId, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
@@ -503,7 +565,7 @@ const loanRepaymentController = {
             const adminUserId = req.user._id; 
             const {
                 transaction_date, amount_received, payment_method, reference_id, notes,
-                status = 'Cleared', principal_component, interest_component, penalty_component,
+                status = 'Cleared', principal_component = 0, interest_component = 0, penalty_component = 0, // Default to 0 if not provided
                 payment_mode_details, value_date
             } = req.body;
 
@@ -525,37 +587,43 @@ const loanRepaymentController = {
             const newTransaction = {
                 transaction_date: transaction_date || new Date(),
                 amount_received, payment_method, reference_id, notes, status,
-                principal_component: principal_component || 0,
-                interest_component: interest_component || 0,
-                penalty_component: penalty_component || 0,
+                principal_component, interest_component, penalty_component,
                 payment_mode_details,
                 value_date: value_date || transaction_date || new Date(),
                 processed_by: adminUserId,
                 created_by_type: 'System' // Or 'Admin'
             };
-            const allocated = (newTransaction.principal_component || 0) + (newTransaction.interest_component || 0) + (newTransaction.penalty_component || 0);
-            newTransaction.unallocated_amount = amount_received - allocated;
-            if (newTransaction.unallocated_amount < -0.01) { 
+            const allocated = principal_component + interest_component + penalty_component;
+            newTransaction.unallocated_amount = Math.max(0, amount_received - allocated); // Ensure non-negative
+            
+            if (allocated > amount_received + 0.01) { // Allow small tolerance for floating point
                  return res.status(400).json({ success: false, message: "Sum of components cannot exceed amount received." });
             }
-            if (Math.abs(newTransaction.unallocated_amount) < 0.01) newTransaction.unallocated_amount = 0;
-
 
             repayment.payment_transactions.push(newTransaction);
             const savedTransaction = repayment.payment_transactions[repayment.payment_transactions.length - 1];
             
             if (status === 'Cleared') {
-                // This is where a robust repayment.processPayment(savedTransaction._id, adminUserId) would be ideal.
-                // Simplified update:
-                repayment.total_principal_repaid += newTransaction.principal_component || 0;
-                repayment.total_interest_repaid += newTransaction.interest_component || 0;
-                repayment.total_penalties_paid += newTransaction.penalty_component || 0;
-                repayment.current_outstanding_principal -= newTransaction.principal_component || 0;
+                // Ideally, call a robust model method: await repayment.processAllocatedPayment(savedTransaction, adminUserId);
+                // Simplified update for directly provided components:
+                repayment.total_principal_repaid += principal_component;
+                repayment.total_interest_repaid += interest_component;
+                repayment.total_penalties_paid += penalty_component;
+                repayment.current_outstanding_principal -= principal_component;
                 if (repayment.current_outstanding_principal < 0) repayment.current_outstanding_principal = 0;
+                
+                // TODO: Update relevant installment's paid amounts and status
+                // This part needs careful logic to find the correct installment(s) and update them.
+                // For example, if admin is specifying components, they might also specify which installment.
+
                 repayment.last_payment_amount = amount_received;
                 repayment.last_payment_date = new Date(newTransaction.transaction_date);
-                // TODO: Call a method to update installment statuses and overall loan status based on this payment.
-                // e.g., await repayment.updateLoanRepaymentOverallStatus();
+                
+                if (repayment.current_outstanding_principal <= 0.01) {
+                    repayment.loan_repayment_status = 'Fully Repaid';
+                    repayment.actual_closure_date = new Date();
+                }
+                // Conceptual call: await repayment.updateLoanRepaymentOverallStatus();
             }
             await repayment.save();
             res.status(201).json({ success: true, message: "Payment transaction recorded.", data: savedTransaction });
@@ -563,14 +631,6 @@ const loanRepaymentController = {
             handleError(res, error, "Failed to record payment transaction.");
         }
     },
-    // Other admin controllers (adminUpdatePaymentTransaction, adminApplyLateFees, etc.) would similarly benefit from
-    // calling robust instance methods on the `repayment` object and then saving.
-    // For brevity, I'll omit repeating them here but the pattern would be:
-    // 1. Fetch repayment.
-    // 2. Call `await repayment.methodName(paramsFromReqBody, req.user._id);`
-    // 3. `await repayment.save();` (though model methods might save themselves)
-    // 4. Send response.
-    // ... (rest of the admin controllers from previous version)
     adminUpdatePaymentTransaction: async (req, res) => {
         try {
             const { repaymentId, transactionId } = req.params;
@@ -651,8 +711,9 @@ const loanRepaymentController = {
             repayment.restructure_history.push(restructureEntry);
             repayment.is_restructured = true;
             repayment.loan_repayment_status = 'Restructured'; 
-            // IMPORTANT: Amortization schedule needs regeneration.
-            // Conceptual call: await repayment.regenerateSchedule(new_terms, effective_from_installment);
+            // IMPORTANT: Amortization schedule needs regeneration based on new_terms.
+            // This would involve clearing future installments and re-generating them.
+            // Conceptual call: await repayment.regenerateScheduleFromInstallment(effective_from_installment, new_terms);
             await repayment.save();
             res.status(200).json({ success: true, message: "Loan restructuring recorded. Schedule regeneration needed.", data: repayment });
         } catch (error) {
@@ -695,7 +756,7 @@ const loanRepaymentController = {
             const remainingPenalty = installment.penalty_due - installment.penalty_paid - installment.penalty_waived;
 
             if (remainingPrincipal <= 0.01 && remainingInterest <= 0.01 && remainingPenalty <= 0.01) {
-                 if ((installment.principal_waived + installment.interest_waived + installment.penalty_waived) >= (installment.total_emi_due + installment.penalty_due - installment.principal_paid - installment.interest_paid - installment.penalty_paid - 0.01) ) {
+                 if ((installment.principal_waived + installment.interest_waived + installment.penalty_waived) >= (installment.total_emi_due + (installment.penalty_due || 0) - installment.principal_paid - installment.interest_paid - installment.penalty_paid - 0.01) ) { // Consider penalty_due
                      installment.status = 'Waived'; 
                 } else {
                      installment.status = 'Paid'; 
@@ -739,7 +800,7 @@ const loanRepaymentController = {
                 repayment.current_outstanding_principal = 0; 
             }
             const noteText = `Status changed to ${loan_repayment_status}${notes ? `. Reason: ${notes}` : '.'}`;
-            repayment.internal_notes.push({ text: noteText, added_by: adminUserId });
+            repayment.internal_notes.push({ text: noteText, added_by: adminUserId, note_date: new Date() });
             await repayment.save();
             res.status(200).json({ success: true, message: "Status updated.", data: repayment });
         } catch (error) {

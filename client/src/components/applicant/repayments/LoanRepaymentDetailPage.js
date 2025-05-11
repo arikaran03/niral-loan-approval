@@ -1,12 +1,17 @@
 // src/components/applicant/repayments/LoanRepaymentDetailPage.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Container, Card, Row, Col, Table, Button, Spinner, Alert, Badge, Modal, Form, InputGroup, ListGroup } from 'react-bootstrap';
-import { ArrowLeft, Calendar, CheckCircle, XCircle, Info, FileText, DollarSign as DollarSignIcon, CreditCard, Landmark, MessageSquare, Quote, ShieldCheck, ShieldX, Hourglass, AlertTriangle, Send } from 'lucide-react';
+import { Container, Card, Row, Col, Table, Button, Spinner, Alert, Badge, Modal, Form, InputGroup, ListGroup, ProgressBar, Tab, Nav } from 'react-bootstrap';
+import { 
+    ArrowLeft, Calendar, CheckCircle, XCircle, Info, FileText, 
+    DollarSign as DollarSignIcon, CreditCard, Landmark, MessageSquare, 
+    Quote, ShieldCheck, ShieldX, Hourglass, AlertTriangle, Send, 
+    TrendingUp, TrendingDown, Percent, HelpCircle, SlidersHorizontal, History // Changed ClockHistory to History
+} from 'lucide-react';
 import { formatCurrency, formatDate, getStatusBadgeVariant, getInstallmentStatusBadgeVariant } from '../../../utils/formatters'; 
 import { axiosInstance } from '../../../config'; 
 
-// API call functions
+// API call functions (assuming these are correctly implemented to hit your backend)
 const fetchLoanRepaymentDetailsAPI = async (repaymentId) => {
     const response = await axiosInstance.get(`/api/repayments/${repaymentId}`);
     return response.data.data; 
@@ -48,6 +53,8 @@ export default function LoanRepaymentDetailPage() {
     const [repaymentDetails, setRepaymentDetails] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [activeTab, setActiveTab] = useState('schedule');
+
 
     // Payment Modal State
     const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -70,65 +77,71 @@ export default function LoanRepaymentDetailPage() {
     const [confirmForeclosureError, setConfirmForeclosureError] = useState('');
     const [confirmForeclosureSuccess, setConfirmForeclosureSuccess] = useState('');
     
-    const loadDetails = useCallback(async () => { 
+    const loadDetails = useCallback(async (isRefresh = false) => { 
         if (!repaymentId) {
             setError("Repayment ID is missing.");
             setLoading(false);
             return;
         }
-        setLoading(true);
+        if (!isRefresh) setLoading(true); 
         setError('');
         try {
             const data = await fetchLoanRepaymentDetailsAPI(repaymentId);
             setRepaymentDetails(data);
-            // Pre-fill payment amount only if it's not already focused for foreclosure payment
-            if (!showPaymentModal || paymentAmount === '') {
+            if (!showPaymentModal || (isRefresh && paymentAmount === (repaymentDetails?.next_emi_amount?.toString() || ''))) {
                  setPaymentAmount(data?.next_emi_amount?.toString() || '');
             }
         } catch (err) {
             console.error("Fetch detail error:", err);
             setError(err.response?.data?.message || err.message || 'Failed to fetch repayment details.');
         } finally {
-            setLoading(false);
+            if (!isRefresh) setLoading(false);
         }
-    }, [repaymentId, showPaymentModal, paymentAmount]); // Added dependencies
+    }, [repaymentId]); 
 
     useEffect(() => {
         loadDetails();
-    }, [loadDetails]); // useEffect will call loadDetails
+    }, [loadDetails]); 
 
-    const handleShowPaymentModal = (amountToPay = null) => {
+    const handleShowPaymentModal = (amountToPay = null, isForeclosurePayment = false) => {
         setPaymentError('');
         setPaymentSuccess('');
         const nextEmi = repaymentDetails?.next_emi_amount;
-        setPaymentAmount(amountToPay ? amountToPay.toString() : (nextEmi && nextEmi > 0 ? nextEmi.toString() : ''));
-        setPaymentMethod('UPI'); // Reset to default
+        setPaymentAmount(amountToPay ? String(amountToPay) : (nextEmi && nextEmi > 0 ? String(nextEmi) : ''));
+        setPaymentMethod('UPI'); 
         setShowPaymentModal(true);
     };
     const handleClosePaymentModal = () => setShowPaymentModal(false);
 
     const handlePaymentSubmit = async (e) => {
         e.preventDefault();
-        if (!paymentAmount || isNaN(parseFloat(paymentAmount)) || parseFloat(paymentAmount) <= 0) {
-            setPaymentError("Please enter a valid payment amount.");
+        const numericPaymentAmount = parseFloat(paymentAmount);
+
+        if (!paymentAmount || isNaN(numericPaymentAmount) || numericPaymentAmount <= 0) {
+            setPaymentError("Please enter a valid positive payment amount.");
             return;
         }
+
+        if (repaymentDetails && numericPaymentAmount > repaymentDetails.current_outstanding_principal + 0.01) { 
+            setPaymentError(`Payment amount cannot exceed the total outstanding principal of ${formatCurrency(repaymentDetails.current_outstanding_principal)}.`);
+            return;
+        }
+
+
         setPaymentSubmitting(true);
         setPaymentError('');
         setPaymentSuccess('');
         try {
             const paymentData = {
-                amount: parseFloat(paymentAmount),
+                amount: numericPaymentAmount,
                 paymentMethod: paymentMethod,
-                // You might want to add a field for payment reference if user provides it
-                // referenceId: 'USER_PROVIDED_REF_IF_ANY' 
             };
             const response = await makePaymentAPI(repaymentId, paymentData);
             if (response.success) {
                 setPaymentSuccess(response.message || "Payment initiated successfully! Details will update shortly.");
                 setTimeout(() => {
                      setShowPaymentModal(false);
-                     loadDetails(); 
+                     loadDetails(true); 
                 }, 2500);
             } else {
                 setPaymentError(response.message || "Payment initiation failed.");
@@ -159,6 +172,10 @@ export default function LoanRepaymentDetailPage() {
     const handleCloseForeclosureQuoteModal = () => setShowForeclosureQuoteModal(false);
 
     const handleShowConfirmForeclosureModal = () => {
+        if (!foreclosureQuote) {
+            alert("Please request a foreclosure quote first.");
+            return;
+        }
         setConfirmForeclosureError('');
         setConfirmForeclosureSuccess('');
         setForeclosurePaymentRef('');
@@ -184,9 +201,9 @@ export default function LoanRepaymentDetailPage() {
             const confirmationData = {
                 paymentDetails: {
                     amountPaid: foreclosureQuote.totalForeclosureAmount,
-                    transactionReference: foreclosurePaymentRef,
-                    paymentDate: new Date().toISOString(), // Assuming payment is made now
-                    paymentMethod: "Foreclosure Payment", // Or collect this
+                    transactionReference: foreclosurePaymentRef, 
+                    paymentDate: new Date().toISOString(), 
+                    paymentMethod: "Foreclosure Payment", 
                     foreclosureFeePaid: foreclosureQuote.foreclosureFee 
                 },
                 notes: "Applicant confirmed foreclosure payment."
@@ -196,7 +213,7 @@ export default function LoanRepaymentDetailPage() {
                 setConfirmForeclosureSuccess(response.message || "Foreclosure confirmed successfully! Loan details updated.");
                 setTimeout(() => {
                      setShowConfirmForeclosureModal(false);
-                     loadDetails(); 
+                     loadDetails(true); 
                 }, 2500);
             } else {
                 setConfirmForeclosureError(response.message || "Foreclosure confirmation failed.");
@@ -210,7 +227,7 @@ export default function LoanRepaymentDetailPage() {
     };
 
 
-    if (loading) {
+    if (loading && !repaymentDetails) { 
         return (
             <Container className="d-flex justify-content-center align-items-center" style={{ minHeight: '60vh' }}>
                 <Spinner animation="border" variant="primary" />
@@ -219,7 +236,7 @@ export default function LoanRepaymentDetailPage() {
         );
     }
 
-    if (error) {
+    if (error && !repaymentDetails) { 
         return (
             <Container className="my-4">
                 <Alert variant="danger" className="text-center">
@@ -234,10 +251,13 @@ export default function LoanRepaymentDetailPage() {
         );
     }
 
-    if (!repaymentDetails) {
+    if (!repaymentDetails) { 
         return (
             <Container className="my-4">
-                <Alert variant="warning">No repayment details found for this record.</Alert>
+                <Alert variant="warning">No repayment details found for this record, or an error occurred.</Alert>
+                 <Button variant="outline-primary" onClick={() => navigate(-1)}>
+                        <ArrowLeft size={16} className="me-1" /> Go Back
+                </Button>
             </Container>
         );
     }
@@ -258,15 +278,21 @@ export default function LoanRepaymentDetailPage() {
         repayment_start_date,
         original_expected_closure_date,
         actual_closure_date,
-        prepayment_configuration
+        prepayment_configuration,
+        total_principal_repaid = 0,
+        total_interest_repaid = 0,
+        total_penalties_paid = 0,
+        days_past_due = 0,
+        total_current_overdue_amount = 0
     } = repaymentDetails;
 
     const canMakePayment = ['Active', 'Active - Overdue', 'Active - Grace Period'].includes(loan_repayment_status);
-    const canRequestForeclosure = prepayment_configuration?.allow_prepayment && canMakePayment; // Allow foreclosure if payments are generally allowed
+    const canRequestForeclosure = prepayment_configuration?.allow_prepayment && canMakePayment; 
+    const progressPercent = disbursed_amount > 0 ? ((total_principal_repaid / disbursed_amount) * 100) : 0;
 
     return (
         <Container fluid="lg" className="my-4 repayment-detail-page">
-            <Button variant="link" onClick={() => navigate(-1)} className="mb-3 text-decoration-none ps-0">
+            <Button variant="link" onClick={() => navigate(-1)} className="mb-3 text-decoration-none ps-0 d-inline-flex align-items-center">
                 <ArrowLeft size={18} className="me-1" /> Back to My Loans
             </Button>
 
@@ -288,50 +314,73 @@ export default function LoanRepaymentDetailPage() {
                     </Row>
                 </Card.Header>
                 <Card.Body>
-                    {/* Stats Cards ... (same as before) */}
-                    <Row className="g-4">
+                    {/* Stats Cards */}
+                    <Row className="g-3 mb-4">
                         <Col md={6} lg={3}>
                             <Card bg="primary" text="white" className="h-100 shadow-sm stat-card">
-                                <Card.Body className="text-center">
-                                    <DollarSignIcon size={32} className="mb-2" />
-                                    <Card.Title as="h6" className="text-uppercase opacity-75">Outstanding Principal</Card.Title>
-                                    <Card.Text className="fs-4 fw-bold">{formatCurrency(current_outstanding_principal)}</Card.Text>
+                                <Card.Body>
+                                    <div className="d-flex justify-content-between align-items-center mb-2">
+                                        <DollarSignIcon size={32} />
+                                        <TrendingDown size={24} />
+                                    </div>
+                                    <h6 className="text-uppercase opacity-75 small">Outstanding Principal</h6>
+                                    <div className="fs-4 fw-bold">{formatCurrency(current_outstanding_principal)}</div>
                                 </Card.Body>
                             </Card>
                         </Col>
                         <Col md={6} lg={3}>
                              <Card bg="info" text="white" className="h-100 shadow-sm stat-card">
-                                <Card.Body className="text-center">
-                                    <CreditCard size={32} className="mb-2" />
-                                    <Card.Title as="h6" className="text-uppercase opacity-75">Next EMI Amount</Card.Title>
-                                    <Card.Text className="fs-4 fw-bold">{next_emi_amount ? formatCurrency(next_emi_amount) : 'N/A'}</Card.Text>
+                                <Card.Body>
+                                     <div className="d-flex justify-content-between align-items-center mb-2">
+                                        <CreditCard size={32} />
+                                        {next_emi_amount > 0 && <TrendingUp size={24}/>}
+                                    </div>
+                                    <h6 className="text-uppercase opacity-75 small">Next EMI Amount</h6>
+                                    <div className="fs-4 fw-bold">{next_emi_amount ? formatCurrency(next_emi_amount) : 'N/A'}</div>
                                 </Card.Body>
                             </Card>
                         </Col>
                         <Col md={6} lg={3}>
-                             <Card bg="warning" text="dark" className="h-100 shadow-sm stat-card">
-                                <Card.Body className="text-center">
-                                    <Calendar size={32} className="mb-2" />
-                                    <Card.Title as="h6" className="text-uppercase opacity-75">Next Due Date</Card.Title>
-                                    <Card.Text className="fs-4 fw-bold">{formatDate(next_due_date)}</Card.Text>
+                             <Card bg={days_past_due > 0 ? "danger" : "warning"} text={days_past_due > 0 ? "white" : "dark"} className="h-100 shadow-sm stat-card">
+                                <Card.Body>
+                                     <div className="d-flex justify-content-between align-items-center mb-2">
+                                        <Calendar size={32} />
+                                        {days_past_due > 0 && <AlertTriangle size={24} />}
+                                    </div>
+                                    <h6 className="text-uppercase opacity-75 small">Next Due Date</h6>
+                                    <div className="fs-4 fw-bold">{formatDate(next_due_date)}</div>
+                                    {days_past_due > 0 && <small>Overdue by {days_past_due} days</small>}
                                 </Card.Body>
                             </Card>
                         </Col>
                          <Col md={6} lg={3}>
                              <Card bg="light" text="dark" className="h-100 shadow-sm stat-card">
-                                <Card.Body className="text-center">
-                                    <Landmark size={32} className="mb-2" />
-                                    <Card.Title as="h6" className="text-uppercase opacity-75">Original EMI</Card.Title>
-                                    <Card.Text className="fs-4 fw-bold">{formatCurrency(initial_calculated_emi)}</Card.Text>
+                                <Card.Body>
+                                    <div className="d-flex justify-content-between align-items-center mb-2">
+                                        <Landmark size={32} />
+                                        <Percent size={24} />
+                                    </div>
+                                    <h6 className="text-uppercase opacity-75 small">Original EMI</h6>
+                                    <div className="fs-4 fw-bold">{formatCurrency(initial_calculated_emi)}</div>
                                 </Card.Body>
                             </Card>
                         </Col>
                     </Row>
+
+                    {/* Progress Bar */}
+                    <div className="mb-4">
+                        <div className="d-flex justify-content-between mb-1 small">
+                            <span>Loan Progress (Principal Repaid)</span>
+                            <span>{formatCurrency(total_principal_repaid)} / {formatCurrency(disbursed_amount)}</span>
+                        </div>
+                        <ProgressBar now={progressPercent} label={`${Math.round(progressPercent)}%`} variant="success" striped animated />
+                    </div>
+                    
                     <hr className="my-4" />
                      <Row>
-                        <Col md={6}>
+                        <Col md={7} className="mb-3 mb-md-0">
                             <h5>Loan Summary</h5>
-                            <Table borderless size="sm" className="summary-table">
+                            <Table borderless hover size="sm" className="summary-table">
                                 <tbody>
                                     <tr><td><strong>Loan Product:</strong></td><td>{loan_id?.title}</td></tr>
                                     <tr><td><strong>Disbursed Amount:</strong></td><td>{formatCurrency(disbursed_amount)}</td></tr>
@@ -340,29 +389,34 @@ export default function LoanRepaymentDetailPage() {
                                     <tr><td><strong>Repayment Start Date:</strong></td><td>{formatDate(repayment_start_date)}</td></tr>
                                     <tr><td><strong>Expected Closure:</strong></td><td>{formatDate(original_expected_closure_date)}</td></tr>
                                     {actual_closure_date && <tr><td><strong>Actual Closure:</strong></td><td>{formatDate(actual_closure_date)}</td></tr>}
+                                    <tr><td><strong>Total Principal Repaid:</strong></td><td className="text-success fw-medium">{formatCurrency(total_principal_repaid)}</td></tr>
+                                    <tr><td><strong>Total Interest Paid:</strong></td><td className="text-success fw-medium">{formatCurrency(total_interest_repaid)}</td></tr>
+                                    {total_penalties_paid > 0 && <tr><td><strong>Total Penalties Paid:</strong></td><td className="text-danger fw-medium">{formatCurrency(total_penalties_paid)}</td></tr>}
+                                    {total_current_overdue_amount > 0 &&  <tr><td><strong>Current Overdue Amount:</strong></td><td className="text-danger fw-bold">{formatCurrency(total_current_overdue_amount)}</td></tr>}
                                 </tbody>
                             </Table>
                         </Col>
-                        <Col md={6} className="d-flex flex-column justify-content-center align-items-center">
+                        <Col md={5} className="d-flex flex-column justify-content-start align-items-center border-start-md ps-md-4">
+                            <h5 className="mb-3">Actions</h5>
                             {canMakePayment ? (
                                 <>
-                                    <Button variant="success" size="lg" className="mb-3 w-75" onClick={() => handleShowPaymentModal()}>
-                                        <DollarSignIcon size={20} className="me-2" /> Make a Payment
+                                    <Button variant="success" size="lg" className="mb-3 w-100" onClick={() => handleShowPaymentModal()}>
+                                        <DollarSignIcon size={20} className="me-2" /> Make Payment
                                     </Button>
                                     {canRequestForeclosure && (
-                                    <Button variant="outline-info" className="mb-3 w-75" onClick={handleShowForeclosureQuoteModal}>
+                                    <Button variant="outline-info" className="mb-3 w-100" onClick={handleShowForeclosureQuoteModal}>
                                         <Quote size={18} className="me-2" /> Request Foreclosure Quote
                                     </Button>
                                     )}
-                                    {foreclosureQuote && canRequestForeclosure && ( // Show confirm button if quote is available
-                                        <Button variant="info" className="w-75" onClick={handleShowConfirmForeclosureModal}>
+                                    {foreclosureQuote && canRequestForeclosure && ( 
+                                        <Button variant="info" className="w-100" onClick={handleShowConfirmForeclosureModal}>
                                             <Send size={18} className="me-2" /> Confirm Foreclosure Payment
                                         </Button>
                                     )}
                                 </>
                             ) : (
-                                <Alert variant={loan_repayment_status === 'Fully Repaid' ? 'success' : 'info'} className="text-center w-75">
-                                    {loan_repayment_status === 'Fully Repaid' ? <ShieldCheck size={24} className="mb-2" /> : <Info size={24} className="mb-2" />}
+                                <Alert variant={loan_repayment_status === 'Fully Repaid' || loan_repayment_status === 'Foreclosed' ? 'success' : 'info'} className="text-center w-100">
+                                    {loan_repayment_status === 'Fully Repaid' || loan_repayment_status === 'Foreclosed' ? <ShieldCheck size={24} className="mb-2" /> : <Info size={24} className="mb-2" />}
                                     This loan is currently <strong>{loan_repayment_status}</strong>.
                                 </Alert>
                             )}
@@ -371,111 +425,161 @@ export default function LoanRepaymentDetailPage() {
                 </Card.Body>
             </Card>
 
-            {/* Installment Schedule Table ... (same as before) */}
-            <Card className="shadow-sm mb-4">
-                <Card.Header><h5 className="mb-0">Installment Schedule</h5></Card.Header>
-                <Card.Body>
-                    {scheduled_installments.length > 0 ? (
-                        <Table responsive hover striped size="sm">
-                            <thead className="table-light">
-                                <tr>
-                                    <th>#</th>
-                                    <th>Due Date</th>
-                                    <th className="text-end">Principal Due</th>
-                                    <th className="text-end">Interest Due</th>
-                                    <th className="text-end">Total EMI</th>
-                                    <th className="text-end">Principal Paid</th>
-                                    <th className="text-end">Interest Paid</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {scheduled_installments.map(inst => (
-                                    <tr key={inst.installment_number} className={inst.status === 'Overdue' ? 'table-danger' : ''}>
-                                        <td>{inst.installment_number}</td>
-                                        <td>{formatDate(inst.due_date)}</td>
-                                        <td className="text-end">{formatCurrency(inst.principal_due)}</td>
-                                        <td className="text-end">{formatCurrency(inst.interest_due)}</td>
-                                        <td className="text-end fw-bold">{formatCurrency(inst.total_emi_due)}</td>
-                                        <td className="text-end text-success">{formatCurrency(inst.principal_paid)}</td>
-                                        <td className="text-end text-success">{formatCurrency(inst.interest_paid)}</td>
-                                        <td>
-                                            <span className="me-1">{getInstallmentStatusIconElement(inst.status)}</span>
-                                            <Badge pill bg={getInstallmentStatusBadgeVariant(inst.status)} 
-                                                   text={getInstallmentStatusBadgeVariant(inst.status) === 'light' ? 'dark' : undefined}>
-                                                {inst.status}
+            {/* Tabbed Sections for Details */}
+            <Card className="shadow-sm">
+                <Card.Header>
+                     <Nav variant="tabs" defaultActiveKey="schedule" onSelect={(k) => setActiveTab(k)}>
+                        <Nav.Item>
+                            <Nav.Link eventKey="schedule" className="d-flex align-items-center"><Calendar size={18} className="me-2"/>Installment Schedule</Nav.Link>
+                        </Nav.Item>
+                        <Nav.Item>
+                            <Nav.Link eventKey="history" className="d-flex align-items-center"><History size={18} className="me-2"/>Payment History</Nav.Link> {/* Changed Icon */}
+                        </Nav.Item>
+                        <Nav.Item>
+                            <Nav.Link eventKey="communication" className="d-flex align-items-center"><MessageSquare size={18} className="me-2"/>Communication Log</Nav.Link>
+                        </Nav.Item>
+                         <Nav.Item>
+                            <Nav.Link eventKey="terms" className="d-flex align-items-center"><SlidersHorizontal size={18} className="me-2"/>Loan Terms & Conditions</Nav.Link>
+                        </Nav.Item>
+                    </Nav>
+                </Card.Header>
+                <Tab.Content>
+                    <Tab.Pane eventKey="schedule" active={activeTab === 'schedule'}>
+                        <Card.Body>
+                            {scheduled_installments.length > 0 ? (
+                                <Table responsive hover striped size="sm">
+                                    <thead className="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Due Date</th>
+                                            <th className="text-end">Principal Due</th>
+                                            <th className="text-end">Interest Due</th>
+                                            <th className="text-end">Total EMI</th>
+                                            <th className="text-end">Principal Paid</th>
+                                            <th className="text-end">Interest Paid</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {scheduled_installments.map(inst => (
+                                            <tr key={inst.installment_number} className={inst.status === 'Overdue' ? 'table-danger' : ''}>
+                                                <td>{inst.installment_number}</td>
+                                                <td>{formatDate(inst.due_date)}</td>
+                                                <td className="text-end">{formatCurrency(inst.principal_due)}</td>
+                                                <td className="text-end">{formatCurrency(inst.interest_due)}</td>
+                                                <td className="text-end fw-bold">{formatCurrency(inst.total_emi_due)}</td>
+                                                <td className="text-end text-success">{formatCurrency(inst.principal_paid)}</td>
+                                                <td className="text-end text-success">{formatCurrency(inst.interest_paid)}</td>
+                                                <td>
+                                                    <span className="me-1">{getInstallmentStatusIconElement(inst.status)}</span>
+                                                    <Badge pill bg={getInstallmentStatusBadgeVariant(inst.status)} 
+                                                           text={getInstallmentStatusBadgeVariant(inst.status) === 'light' ? 'dark' : undefined}>
+                                                        {inst.status}
+                                                    </Badge>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </Table>
+                            ) : <Alert variant="light" className="text-center mt-3">No installment schedule available. This may be due to pending setup or if the loan type does not have a fixed schedule.</Alert>}
+                        </Card.Body>
+                    </Tab.Pane>
+                    <Tab.Pane eventKey="history" active={activeTab === 'history'}>
+                        <Card.Body>
+                            {payment_transactions.length > 0 ? (
+                                <Table responsive hover striped size="sm">
+                                    <thead className="table-light">
+                                        <tr>
+                                            <th>Transaction Date</th>
+                                            <th className="text-end">Amount Received</th>
+                                            <th>Method</th>
+                                            <th>Reference</th>
+                                            <th>Status</th>
+                                            <th className="text-end">Principal Paid</th>
+                                            <th className="text-end">Interest Paid</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {payment_transactions.map(txn => (
+                                            <tr key={txn._id}>
+                                                <td>{formatDate(txn.transaction_date, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                                                <td className="text-end">{formatCurrency(txn.amount_received)}</td>
+                                                <td>{txn.payment_method}</td>
+                                                <td>{txn.reference_id || 'N/A'}</td>
+                                                <td>
+                                                    <Badge bg={txn.status === 'Cleared' ? 'success' : (txn.status === 'Failed' || txn.status === 'Bounced' ? 'danger' : 'secondary')}>
+                                                        {txn.status}
+                                                    </Badge>
+                                                </td>
+                                                <td className="text-end">{formatCurrency(txn.principal_component)}</td>
+                                                <td className="text-end">{formatCurrency(txn.interest_component)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </Table>
+                            ) : <Alert variant="light" className="text-center mt-3">No payment transactions recorded yet.</Alert>}
+                        </Card.Body>
+                    </Tab.Pane>
+                    <Tab.Pane eventKey="communication" active={activeTab === 'communication'}>
+                         <Card.Body>
+                            {communication_log.length > 0 ? (
+                                <ListGroup variant="flush">
+                                    {communication_log.map((log, index) => (
+                                        <ListGroup.Item key={index} className="d-flex justify-content-between align-items-start py-2 px-0">
+                                            <div>
+                                                <div className="fw-bold">
+                                                    <MessageSquare size={16} className="me-2 text-muted" /> 
+                                                    {log.type} - {log.subject || 'General Communication'}
+                                                </div>
+                                                <small className="text-muted d-block ms-4 ps-1">{formatDate(log.log_date, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</small>
+                                                <p className="mb-0 mt-1 ms-4 ps-1">{log.summary}</p>
+                                            </div>
+                                            <Badge bg={log.status === 'Delivered' || log.status === 'Sent' ? 'light' : 'warning'} 
+                                                   text={(log.status === 'Delivered' || log.status === 'Sent') && getStatusBadgeVariant(log.status) === 'light' ? 'dark' : undefined}
+                                                   className="ms-2">
+                                                {log.status}
                                             </Badge>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </Table>
-                    ) : <p>No installment schedule available.</p>}
-                </Card.Body>
+                                        </ListGroup.Item>
+                                    ))}
+                                </ListGroup>
+                            ) : <Alert variant="light" className="text-center mt-3">No communication logs available.</Alert>}
+                        </Card.Body>
+                    </Tab.Pane>
+                     <Tab.Pane eventKey="terms" active={activeTab === 'terms'}>
+                        <Card.Body>
+                            <h5>Prepayment & Foreclosure Terms</h5>
+                            {prepayment_configuration ? (
+                                <ListGroup variant="flush" className="mb-3">
+                                    <ListGroup.Item><strong>Allowed:</strong> {prepayment_configuration.allow_prepayment ? 'Yes' : 'No'}</ListGroup.Item>
+                                    {prepayment_configuration.allow_prepayment && <>
+                                        <ListGroup.Item><strong>Part Prepayment:</strong> {prepayment_configuration.allow_part_prepayment ? 'Yes' : 'No'}</ListGroup.Item>
+                                        <ListGroup.Item><strong>Lock-in Period:</strong> {prepayment_configuration.lock_in_period_months || 0} months</ListGroup.Item>
+                                        <ListGroup.Item><strong>Fee Type:</strong> {prepayment_configuration.prepayment_fee_type || 'None'}</ListGroup.Item>
+                                        {prepayment_configuration.prepayment_fee_type !== 'None' && 
+                                            <ListGroup.Item><strong>Fee Value:</strong> {prepayment_configuration.prepayment_fee_type.includes('Percentage') ? `${prepayment_configuration.prepayment_fee_value}%` : formatCurrency(prepayment_configuration.prepayment_fee_value)}</ListGroup.Item>
+                                        }
+                                    </>}
+                                </ListGroup>
+                            ) : <p>Prepayment terms not specified.</p>}
+                            
+                            <h5>Penalty Configuration</h5>
+                             {repaymentDetails.penalty_configuration ? (
+                                <ListGroup variant="flush">
+                                    <ListGroup.Item><strong>Late Fee Type:</strong> {repaymentDetails.penalty_configuration.late_payment_fee_type || 'None'}</ListGroup.Item>
+                                     {repaymentDetails.penalty_configuration.late_payment_fee_type !== 'None' && 
+                                        <ListGroup.Item><strong>Late Fee Value:</strong> {repaymentDetails.penalty_configuration.late_payment_fee_type.includes('Percentage') ? `${repaymentDetails.penalty_configuration.late_payment_fee_value}%` : formatCurrency(repaymentDetails.penalty_configuration.late_payment_fee_value)}</ListGroup.Item>
+                                    }
+                                    <ListGroup.Item><strong>Grace Period:</strong> {repaymentDetails.penalty_configuration.late_payment_grace_period_days || 0} days</ListGroup.Item>
+                                </ListGroup>
+                            ) : <p>Penalty terms not specified.</p>}
+                            <Alert variant="light" className="mt-3 small">
+                                <HelpCircle size={16} className="me-1"/> For detailed terms and conditions, please refer to your loan agreement document or contact customer support.
+                            </Alert>
+                        </Card.Body>
+                    </Tab.Pane>
+                </Tab.Content>
             </Card>
 
-            {/* Payment History Table ... (same as before) */}
-            <Card className="shadow-sm mb-4">
-                <Card.Header><h5 className="mb-0">Payment History</h5></Card.Header>
-                <Card.Body>
-                    {payment_transactions.length > 0 ? (
-                        <Table responsive hover striped size="sm">
-                            <thead className="table-light">
-                                <tr>
-                                    <th>Date</th>
-                                    <th className="text-end">Amount Received</th>
-                                    <th>Method</th>
-                                    <th>Reference</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {payment_transactions.map(txn => (
-                                    <tr key={txn._id}>
-                                        <td>{formatDate(txn.transaction_date, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                                        <td className="text-end">{formatCurrency(txn.amount_received)}</td>
-                                        <td>{txn.payment_method}</td>
-                                        <td>{txn.reference_id || 'N/A'}</td>
-                                        <td>
-                                            <Badge bg={txn.status === 'Cleared' ? 'success' : (txn.status === 'Failed' || txn.status === 'Bounced' ? 'danger' : 'secondary')}>
-                                                {txn.status}
-                                            </Badge>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </Table>
-                    ) : <p>No payment transactions recorded yet.</p>}
-                </Card.Body>
-            </Card>
-            
-            {/* Communication Log ... (same as before) */}
-            {communication_log.length > 0 && (
-                 <Card className="shadow-sm">
-                    <Card.Header><h5 className="mb-0">Communication Log</h5></Card.Header>
-                    <Card.Body>
-                        <ListGroup variant="flush">
-                            {communication_log.map((log, index) => (
-                                <ListGroup.Item key={index} className="d-flex justify-content-between align-items-start py-2 px-0">
-                                    <div>
-                                        <div className="fw-bold">
-                                            <MessageSquare size={16} className="me-2 text-muted" /> 
-                                            {log.type} - {log.subject || 'General Communication'}
-                                        </div>
-                                        <small className="text-muted d-block ms-4 ps-1">{formatDate(log.log_date, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</small>
-                                        <p className="mb-0 mt-1 ms-4 ps-1">{log.summary}</p>
-                                    </div>
-                                    <Badge bg={log.status === 'Delivered' || log.status === 'Sent' ? 'light' : 'warning'} 
-                                           text={(log.status === 'Delivered' || log.status === 'Sent') && getStatusBadgeVariant(log.status) === 'light' ? 'dark' : undefined}
-                                           className="ms-2">
-                                        {log.status}
-                                    </Badge>
-                                </ListGroup.Item>
-                            ))}
-                        </ListGroup>
-                    </Card.Body>
-                </Card>
-            )}
 
             {/* Payment Modal (same as before) */}
             <Modal show={showPaymentModal} onHide={handleClosePaymentModal} centered>
@@ -486,7 +590,7 @@ export default function LoanRepaymentDetailPage() {
                     <Modal.Body>
                         {paymentSuccess && <Alert variant="success">{paymentSuccess}</Alert>}
                         {paymentError && <Alert variant="danger">{paymentError}</Alert>}
-                        <Form.Group className="mb-3" controlId="paymentAmountModal"> {/* Changed ID to avoid conflict */}
+                        <Form.Group className="mb-3" controlId="paymentAmountModal"> 
                             <Form.Label>Amount to Pay</Form.Label>
                             <InputGroup>
                                 <InputGroup.Text>₹</InputGroup.Text>
@@ -501,8 +605,13 @@ export default function LoanRepaymentDetailPage() {
                                     disabled={paymentSubmitting}
                                 />
                             </InputGroup>
+                             {repaymentDetails && parseFloat(paymentAmount) > repaymentDetails.current_outstanding_principal &&
+                                <Form.Text className="text-danger">
+                                    Payment amount exceeds total outstanding principal. Max payable: {formatCurrency(repaymentDetails.current_outstanding_principal)}.
+                                </Form.Text>
+                            }
                         </Form.Group>
-                        <Form.Group className="mb-3" controlId="paymentMethodModal"> {/* Changed ID */}
+                        <Form.Group className="mb-3" controlId="paymentMethodModal"> 
                             <Form.Label>Payment Method</Form.Label>
                             <Form.Select 
                                 value={paymentMethod} 
@@ -519,14 +628,14 @@ export default function LoanRepaymentDetailPage() {
                         <Button variant="secondary" onClick={handleClosePaymentModal} disabled={paymentSubmitting}>
                             Cancel
                         </Button>
-                        <Button variant="primary" type="submit" disabled={paymentSubmitting || !paymentAmount}>
+                        <Button variant="primary" type="submit" disabled={paymentSubmitting || !paymentAmount || (repaymentDetails && parseFloat(paymentAmount) > repaymentDetails.current_outstanding_principal + 0.01) }>
                             {paymentSubmitting ? <><Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" /> Processing...</> : 'Proceed to Pay'}
                         </Button>
                     </Modal.Footer>
                 </Form>
             </Modal>
 
-            {/* Foreclosure Quote Modal (updated Pay button) */}
+            {/* Foreclosure Quote Modal (same as before) */}
             <Modal show={showForeclosureQuoteModal} onHide={handleCloseForeclosureQuoteModal} centered size="lg">
                  <Modal.Header closeButton>
                     <Modal.Title><Quote size={24} className="me-2" />Foreclosure Quote</Modal.Title>
@@ -556,11 +665,11 @@ export default function LoanRepaymentDetailPage() {
                                 <p>To proceed with foreclosure, please make a payment for the 'Total Amount Payable'.</p>
                                 <Button variant="success" className="mb-2" onClick={() => { 
                                     handleCloseForeclosureQuoteModal(); 
-                                    handleShowPaymentModal(foreclosureQuote.totalForeclosureAmount);
+                                    handleShowPaymentModal(foreclosureQuote.totalForeclosureAmount, true); // Pass true for isForeclosurePayment
                                     }}>
                                     <DollarSignIcon size={18} className="me-1" /> Initiate Foreclosure Payment
                                 </Button>
-                                <p className="small mt-1">After successful payment, you may need to confirm the foreclosure.</p>
+                                <p className="small mt-1">After successful payment, please use the "Confirm Foreclosure Payment" button on the main page.</p>
                             </div>
                         </>
                     )}
@@ -570,7 +679,7 @@ export default function LoanRepaymentDetailPage() {
                 </Modal.Footer>
             </Modal>
 
-            {/* Confirm Foreclosure Modal */}
+            {/* Confirm Foreclosure Modal (same as before) */}
             <Modal show={showConfirmForeclosureModal} onHide={handleCloseConfirmForeclosureModal} centered>
                 <Modal.Header closeButton>
                     <Modal.Title><Send size={24} className="me-2" />Confirm Foreclosure Payment</Modal.Title>
@@ -579,16 +688,22 @@ export default function LoanRepaymentDetailPage() {
                     <Modal.Body>
                         {confirmForeclosureSuccess && <Alert variant="success">{confirmForeclosureSuccess}</Alert>}
                         {confirmForeclosureError && <Alert variant="danger">{confirmForeclosureError}</Alert>}
-                        <p>Please confirm that you have successfully paid the foreclosure amount of <strong>{formatCurrency(foreclosureQuote?.totalForeclosureAmount)}</strong>.</p>
+                        <p>Please confirm that you have successfully paid the foreclosure amount of 
+                           <strong> {formatCurrency(foreclosureQuote?.totalForeclosureAmount)}</strong>.
+                        </p>
                         <Form.Group className="mb-3" controlId="foreclosurePaymentRef">
-                            <Form.Label>Payment Reference ID (Optional but Recommended)</Form.Label>
+                            <Form.Label>Payment Reference ID</Form.Label>
                             <Form.Control
                                 type="text"
                                 placeholder="Enter payment transaction ID or reference"
                                 value={foreclosurePaymentRef}
                                 onChange={(e) => setForeclosurePaymentRef(e.target.value)}
                                 disabled={confirmForeclosureSubmitting}
+                                required 
                             />
+                             <Form.Text className="text-muted">
+                                This helps us verify your payment quickly.
+                            </Form.Text>
                         </Form.Group>
                          <Alert variant="warning" size="sm">
                             <AlertTriangle size={16} className="me-1"/> Ensure the payment has been successfully processed before confirming. This action will attempt to formally close your loan.
@@ -598,7 +713,7 @@ export default function LoanRepaymentDetailPage() {
                         <Button variant="secondary" onClick={handleCloseConfirmForeclosureModal} disabled={confirmForeclosureSubmitting}>
                             Cancel
                         </Button>
-                        <Button variant="primary" type="submit" disabled={confirmForeclosureSubmitting || !foreclosureQuote}>
+                        <Button variant="primary" type="submit" disabled={confirmForeclosureSubmitting || !foreclosureQuote || !foreclosurePaymentRef.trim()}>
                             {confirmForeclosureSubmitting ? <><Spinner as="span" animation="border" size="sm" /> Confirming...</> : 'Confirm Foreclosure'}
                         </Button>
                     </Modal.Footer>
