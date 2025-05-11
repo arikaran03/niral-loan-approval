@@ -1,5 +1,5 @@
 // src/controllers/user.controller.js
-import User from '../database/models/User.js';
+import User from '../database/models/UserModel.js';
 
 /**
  * Get current user's profile (from req.user)

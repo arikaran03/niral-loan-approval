@@ -1,11 +1,6 @@
 // src/models/LoanSubmission.js
 import mongoose from 'mongoose';
 
-// Assume 'Image' model stores file metadata (_id, filename, contentType, path/buffer, uploadedBy, etc.)
-// import Image from './Image';
-
-// --- Subdocument Schemas ---
-
 // Schema for CUSTOM field responses (from Loan.fields)
 const submissionFieldSchema = new mongoose.Schema({
   field_id:    { type: String, required: true }, // Matches field_id from Loan schema's fields array

@@ -1,8 +1,8 @@
 // src/components/admin/repayments/AdminLoanRepaymentsListPage.js
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Container, Card, Table, Button, Spinner, Alert, Badge, Row, Col, Form, InputGroup, Pagination } from 'react-bootstrap';
-import { ListChecks, Eye, Filter, UserCircle, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Container, Card, Table, Button, Spinner, Alert, Badge, Row, Col, Form, Pagination } from 'react-bootstrap';
+import { ListChecks, Eye, SlidersHorizontal, X } from 'lucide-react';
 // Placeholder for your API call function
 // import { axiosInstance } from '../../../config'; // Adjust path as needed
 

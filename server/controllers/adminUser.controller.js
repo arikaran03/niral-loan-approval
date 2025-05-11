@@ -1,5 +1,5 @@
 // src/controllers/adminUser.controller.js
-import User from '../database/models/User.js';
+import User from '../database/models/UserModel.js';
 
 /**
  * List all users (admin only)
