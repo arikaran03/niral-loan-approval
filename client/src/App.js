@@ -13,6 +13,7 @@ import Profile from "./components/Profile";
 import AdminDashboard from "./components/admin/AdminDashboard";
 import UserDashboard from "./components/applicant/UserDashboard";
 import ApplicationFullDetails from "./components/applicant/applications/ApplicationFullDetails"; // Corrected path
+import DynamicDocumentForm from "./components/admin/schema/DynamicDocumentForm";
 
 // Import the new repayment components
 import MyLoanRepaymentsPage from "./components/applicant/repayments/MyLoanRepaymentsPage";
@@ -20,7 +21,6 @@ import LoanRepaymentDetailPage from "./components/applicant/repayments/LoanRepay
 import AdminLoanRepaymentsListPage from "./components/admin/repayments/AdminLoanRepaymentsListPage";
 // You'll also need an AdminRepaymentDetailView component, let's assume its path for now:
 // import AdminRepaymentDetailView from "./components/admin/repayments/AdminRepaymentDetailView";
-
 
 function App() {
   return (
@@ -33,13 +33,17 @@ function App() {
           <Route path="applications/:id" element={<SubmissionDetails />} />
           <Route path="loans" element={<LoanListPage />} />
           <Route path="form-builder" element={<FormBuilderContainer />} />
-          <Route path="form-builder/:loanId" element={<FormBuilderContainer />} />
-          
+          <Route
+            path="form-builder/:loanId"
+            element={<FormBuilderContainer />}
+          />
+
           {/* Admin Repayment Routes */}
+          <Route path="schema" element={<DynamicDocumentForm />} />
           <Route path="repayments" element={<AdminLoanRepaymentsListPage />} />
           {/* Assuming you'll create an AdminRepaymentDetailView component */}
           {/* <Route path="repayments/:repaymentId" element={<AdminRepaymentDetailView />} /> */}
-          
+
           <Route path="*" element={<PageNotFound />} />
         </Route>
 
@@ -47,22 +51,28 @@ function App() {
         <Route path="/" element={<PrivateRoute />}>
           <Route path="" element={<AvailableLoans />} />
           <Route path="dashboard" element={<UserDashboard />} />
-          <Route path="applications/:submissionId" element={<ApplicationFullDetails />} />
+          <Route
+            path="applications/:submissionId"
+            element={<ApplicationFullDetails />}
+          />
           <Route path="apply/:loanId" element={<ApplicationForm />} />
 
           {/* Applicant Repayment Routes */}
           <Route path="repayments" element={<MyLoanRepaymentsPage />} />
-          <Route path="repayments/:repaymentId" element={<LoanRepaymentDetailPage />} />
+          <Route
+            path="repayments/:repaymentId"
+            element={<LoanRepaymentDetailPage />}
+          />
         </Route>
-        
+
         <Route path="/profile" element={<PrivateRoute />}>
-          <Route path="" element={<Profile/>} />
+          <Route path="" element={<Profile />} />
         </Route>
 
         {/* Auth Routes */}
         <Route path="/admin/register/new-user" element={<Register />} />
         <Route path="/login" element={<Login />} />
-        
+
         {/* Catch-all for Page Not Found */}
         <Route path="*" element={<PageNotFound />} />
       </Routes>
