@@ -10,21 +10,7 @@ import {
   Spinner,
   Alert,
 } from "react-bootstrap";
-import axios from "axios"; // Assuming axios is installed
-
-// Define the base URL for your API
-const API_BASE_URL = "/api/document"; // Adjust if your API base URL is different
-
-// Create an Axios instance
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-    // Add any other headers needed, e.g., authorization tokens
-    // 'Authorization': `Bearer ${yourAuthToken}`,
-  },
-});
-
+import { axiosInstance } from "../../../config.js";
 // Define the possible field types based on your schema
 const FIELD_TYPES = [
   "text",
@@ -304,7 +290,10 @@ const DynamicDocumentForm = () => {
 
     try {
       // Make the API call using the axios instance
-      const response = await api.post("/schema-definition", submissionData); // POST to /api/document/schema-definition
+      const response = await axiosInstance.post(
+        "/api/document/schema-definition",
+        submissionData
+      ); // POST to /api/document/schema-definition
 
       if (response.status >= 200 && response.status < 300) {
         // Check for success status codes
