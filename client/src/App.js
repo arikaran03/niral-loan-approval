@@ -14,6 +14,7 @@ import AdminDashboard from "./components/admin/AdminDashboard";
 import UserDashboard from "./components/applicant/UserDashboard";
 import ApplicationFullDetails from "./components/applicant/applications/ApplicationFullDetails"; // Corrected path
 import DynamicDocumentForm from "./components/admin/schema/DynamicDocumentForm";
+import DynamicDocumentSubmissionForm from "./components/admin/schema/DynamicDocumentSubmissionForm";
 
 // Import the new repayment components
 import MyLoanRepaymentsPage from "./components/applicant/repayments/MyLoanRepaymentsPage";
@@ -40,6 +41,10 @@ function App() {
 
           {/* Admin Repayment Routes */}
           <Route path="schema" element={<DynamicDocumentForm />} />
+          <Route
+            path="submit-schema"
+            element={<DynamicDocumentSubmissionForm />}
+          />
           <Route path="repayments" element={<AdminLoanRepaymentsListPage />} />
           {/* Assuming you'll create an AdminRepaymentDetailView component */}
           {/* <Route path="repayments/:repaymentId" element={<AdminRepaymentDetailView />} /> */}
