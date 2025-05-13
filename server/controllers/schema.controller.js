@@ -207,17 +207,17 @@ export const submitDocumentData = async (req, res) => {
   console.log("Request Body:", req.body);
   console.log("Received Files:", req.files); // Should be populated by multer or similar middleware
 
-  const { schema_id, user_id, created_by, fieldsData } = req.body;
+  const { schema_id, fieldsData } = req.body;
+  const user_id = req.user._id;
+  const created_by = req.user._id;
 
   // --- Server-side Validation ---
   if (!schema_id || !user_id || !created_by || !fieldsData) {
     console.error("Validation Error: Missing required submission data.");
-    return res
-      .status(400)
-      .json({
-        message:
-          "Missing required submission data (schema_id, user_id, created_by, fieldsData).",
-      });
+    return res.status(400).json({
+      message:
+        "Missing required submission data (schema_id, user_id, created_by, fieldsData).",
+    });
   }
 
   let parsedFieldsData;

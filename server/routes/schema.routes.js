@@ -1,10 +1,14 @@
 // schema.routes.js
 import express from "express";
 import * as schemaController from "../controllers/schema.controller.js"; // Import all exports
+import multer from "multer";
 // Assume you have configured and imported multer middleware
 // import upload from '../middleware/uploadMiddleware'; // Example multer configuration
 
 const router = express.Router();
+
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 // --- Routes for Schema Definitions ---
 
@@ -34,7 +38,11 @@ router.get(
 // router.post("/submission", upload.fields([...]), schemaController.submitDocumentData);
 
 // For this example, we'll add the route assuming middleware is applied elsewhere or you add it here:
-router.post("/submission", schemaController.submitDocumentData); // Add your multer middleware BEFORE schemaController.submitDocumentData
+router.post(
+  "/submission",
+  upload.single("image"),
+  schemaController.submitDocumentData
+); // Add your multer middleware BEFORE schemaController.submitDocumentData
 
 // You will need to ensure your express app uses a body-parser middleware for JSON/URL-encoded bodies
 // and specifically configure multer or similar for handling multipart/form-data on the '/submission' route.

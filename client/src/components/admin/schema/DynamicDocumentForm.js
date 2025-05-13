@@ -104,8 +104,8 @@ const DynamicDocumentForm = () => {
         type: "text", // Default type
         required: false,
         options: [], // Initialize options array
-        min_value: "", // Initialize min_value
-        max_value: "", // Initialize max_value
+        min_value: "", // Initialize min_value as empty string
+        max_value: "", // Initialize max_value as empty string
       },
     ]);
   };
@@ -119,11 +119,32 @@ const DynamicDocumentForm = () => {
       if (newState.fields) {
         // Filter out the error entry for the removed index
         const newFieldErrors = newState.fields.filter((_, i) => i !== index);
-        if (newFieldErrors.length > 0) {
-          // Re-index the remaining errors if necessary (though not strictly needed for this validation structure)
-          // For simplicity, we'll just assign the filtered array.
-          newState.fields = newFieldErrors;
-        } else {
+        // Mongoose validation errors are typically an object keyed by path, not an array
+        // Adjusting cleanup to match potential Mongoose error structure (though client validation structure is array-based here)
+        const cleanedFieldErrors = {};
+        newFieldErrors.forEach((err, newIndex) => {
+          // Assuming the original errors were fieldErrors[index] = { key: '...', ... }
+          // This part of error cleanup is complex with array index changes and might need re-thinking
+          // A simpler approach might be to just re-validate after removing a field, but that might be jarring.
+          // For now, we'll try filtering the array structure:
+          if (prev.fields && prev.fields[index]) {
+            // This is a simplified attempt to clean up the old index's errors
+            // A more robust solution might involve re-indexing errors or a different error state structure
+            // For this example, let's remove the error for the index that was removed
+            const errorsAfterRemoval = prev.fields.filter(
+              (_, i) => i !== index
+            );
+            // Note: This might not correctly align errors if indices shift significantly
+            // Keeping it simple for the demo
+            newState.fields = errorsAfterRemoval;
+            if (newState.fields.length === 0) {
+              delete newState.fields;
+            }
+          }
+        });
+        if (Object.keys(cleanedFieldErrors).length > 0) {
+          newState.fields = cleanedFieldErrors;
+        } else if (newState.fields && newState.fields.length === 0) {
           delete newState.fields;
         }
       }
@@ -223,28 +244,32 @@ const DynamicDocumentForm = () => {
         isValid = false;
       }
 
-      // min_value and max_value are required strings in your schema
-      if (field.min_value === "") {
-        // Check for empty string as per your schema's required: true
+      // --- MODIFIED VALIDATION FOR min_value/max_value ---
+      // min_value and max_value are required strings only if type is NOT image or document
+      const isImageOrDocument =
+        field.type === "image" || field.type === "document";
+
+      if (!isImageOrDocument && field.min_value === "") {
         currentFieldErrors.min_value = "Min value is required.";
         isValid = false;
       }
-      if (field.max_value === "") {
-        // Check for empty string
+      if (!isImageOrDocument && field.max_value === "") {
         currentFieldErrors.max_value = "Max value is required.";
         isValid = false;
       }
+      // --- END MODIFIED VALIDATION ---
 
       // Optional: Add more specific validation based on field.type and min/max values
+      // This part remains the same, but will only apply if min_value/max_value are provided (not empty)
       if (
         field.type === "number" &&
-        field.min_value !== "" &&
+        field.min_value !== "" && // Only validate format/range if values are not empty
         field.max_value !== ""
       ) {
         const minNum = parseFloat(field.min_value);
         const maxNum = parseFloat(field.max_value);
         if (isNaN(minNum) || isNaN(maxNum)) {
-          // This check might be needed if you expect numbers but schema allows any string
+          // Consider adding format validation even if not strictly required by backend schema
           // currentFieldErrors.min_value = currentFieldErrors.max_value = 'Must be valid numbers.';
           // isValid = false;
         } else if (minNum > maxNum) {
@@ -260,12 +285,16 @@ const DynamicDocumentForm = () => {
       }
     });
 
-    if (fieldErrors.length > 0) {
-      // Filter out empty error objects before assigning
-      errors.fields = fieldErrors.filter((err) => Object.keys(err).length > 0);
-      if (errors.fields.length === 0) {
-        delete errors.fields; // Remove fields key if no actual field errors remain
-      }
+    // Filter out empty error objects before assigning
+    const filteredFieldErrors = fieldErrors.filter(
+      (err) => Object.keys(err).length > 0
+    );
+    if (filteredFieldErrors.length > 0) {
+      errors.fields = filteredFieldErrors; // Assign filtered errors
+      isValid = false; // Form is invalid if there are any field errors
+    } else {
+      // If no field errors, ensure the fields key is not present or is empty
+      if (errors.fields) delete errors.fields;
     }
 
     setValidationErrors(errors);
@@ -299,9 +328,18 @@ const DynamicDocumentForm = () => {
         prompt: field.prompt.trim(), // Include prompt field
         type: field.type,
         required: field.required,
-        options: field.options.length > 0 ? field.options : undefined, // Send options only if present
-        min_value: field.min_value.trim(),
-        max_value: field.max_value.trim(),
+        options:
+          field.options && field.options.length > 0 ? field.options : undefined, // Send options only if present and not empty
+        // Send min_value/max_value as empty string if type is image/document,
+        // or trimmed value otherwise.
+        min_value:
+          field.type === "image" || field.type === "document"
+            ? ""
+            : field.min_value.trim(),
+        max_value:
+          field.type === "image" || field.type === "document"
+            ? ""
+            : field.max_value.trim(),
       })),
     };
 
@@ -369,11 +407,14 @@ const DynamicDocumentForm = () => {
         return "number";
       case "date":
         return "date";
-      // Add other types if their min/max should have specific input types
-      // case 'datetime': return 'datetime-local';
-      // case 'time': return 'time';
+      case "datetime": // Assuming datetime might use min/max
+        return "datetime-local";
+      case "time": // Assuming time might use min/max
+        return "time";
       default:
-        return "text"; // Default to text for all other types
+        // For image/document/text/textarea/select/multiselect, min/max might represent size or length.
+        // Keeping as text input is flexible.
+        return "text";
     }
   };
 
@@ -458,262 +499,276 @@ const DynamicDocumentForm = () => {
         <Card className="mb-4">
           <Card.Header>Document Fields</Card.Header>
           <Card.Body>
-            {fields.map((field, index) => (
-              <Card key={index} className="mb-3 p-3 border">
-                <Row className="align-items-center">
-                  <Col md={5}>
-                    <Form.Group
-                      className="mb-3"
-                      controlId={`fieldKey_${index}`}
-                    >
-                      <Form.Label>
-                        Field Key <span className="text-danger">*</span>
-                      </Form.Label>
-                      <Form.Control
-                        type="text"
-                        name="key"
-                        value={field.key}
-                        onChange={(e) => handleFieldChange(index, e)}
-                        isInvalid={
-                          !!(
-                            validationErrors.fields &&
-                            validationErrors.fields[index] &&
-                            validationErrors.fields[index].key
-                          )
-                        }
-                      />
-                      <Form.Control.Feedback type="invalid">
-                        {validationErrors.fields &&
-                          validationErrors.fields[index] &&
-                          validationErrors.fields[index].key}
-                      </Form.Control.Feedback>
-                    </Form.Group>
-                  </Col>
-                  <Col md={6}>
-                    <Form.Group
-                      className="mb-3"
-                      controlId={`fieldLabel_${index}`}
-                    >
-                      <Form.Label>
-                        Field Label <span className="text-danger">*</span>
-                      </Form.Label>
-                      <Form.Control
-                        type="text"
-                        name="label"
-                        value={field.label}
-                        onChange={(e) => handleFieldChange(index, e)}
-                        isInvalid={
-                          !!(
-                            validationErrors.fields &&
-                            validationErrors.fields[index] &&
-                            validationErrors.fields[index].label
-                          )
-                        }
-                      />
-                      <Form.Control.Feedback type="invalid">
-                        {validationErrors.fields &&
-                          validationErrors.fields[index] &&
-                          validationErrors.fields[index].label}
-                      </Form.Control.Feedback>
-                    </Form.Group>
-                  </Col>
-                  <Col md={1} className="d-flex justify-content-end">
-                    {/* Remove Field Button */}
-                    <Button
-                      variant="outline-danger"
-                      onClick={() => handleRemoveField(index)}
-                      size="sm"
-                      aria-label={`Remove field ${field.label || index + 1}`}
-                    >
-                      &times; {/* Simple 'x' icon */}
-                    </Button>
-                  </Col>
-                </Row>
+            {fields.map((field, index) => {
+              // Determine if min/max should be treated as required for UI/Validation
+              const isMinMaxRequired =
+                field.type !== "image" && field.type !== "document";
 
-                <Row>
-                  <Col md={12}>
-                    {" "}
-                    {/* Prompt field takes full width */}
-                    <Form.Group
-                      className="mb-3"
-                      controlId={`fieldPrompt_${index}`}
-                    >
-                      <Form.Label>
-                        Prompt <span className="text-danger">*</span>{" "}
-                        {/* Assuming prompt is required */}
-                      </Form.Label>
-                      <Form.Control
-                        type="text"
-                        name="prompt"
-                        value={field.prompt}
-                        onChange={(e) => handleFieldChange(index, e)}
-                        isInvalid={
-                          !!(
-                            validationErrors.fields &&
-                            validationErrors.fields[index] &&
-                            validationErrors.fields[index].prompt
-                          )
-                        }
-                      />
-                      <Form.Control.Feedback type="invalid">
-                        {validationErrors.fields &&
-                          validationErrors.fields[index] &&
-                          validationErrors.fields[index].prompt}
-                      </Form.Control.Feedback>
-                    </Form.Group>
-                  </Col>
-                </Row>
-
-                <Row>
-                  <Col md={4}>
-                    <Form.Group
-                      className="mb-3"
-                      controlId={`fieldType_${index}`}
-                    >
-                      <Form.Label>
-                        Type <span className="text-danger">*</span>
-                      </Form.Label>
-                      <Form.Select
-                        name="type"
-                        value={field.type}
-                        onChange={(e) => handleFieldChange(index, e)}
-                        isInvalid={
-                          !!(
-                            validationErrors.fields &&
-                            validationErrors.fields[index] &&
-                            validationErrors.fields[index].type
-                          )
-                        }
+              return (
+                <Card key={index} className="mb-3 p-3 border">
+                  <Row className="align-items-center">
+                    <Col md={5}>
+                      <Form.Group
+                        className="mb-3"
+                        controlId={`fieldKey_${index}`}
                       >
-                        {FIELD_TYPES.map((type) => (
-                          <option key={type} value={type}>
-                            {type}
-                          </option>
-                        ))}
-                      </Form.Select>
-                      <Form.Control.Feedback type="invalid">
-                        {validationErrors.fields &&
-                          validationErrors.fields[index] &&
-                          validationErrors.fields[index].type}
-                      </Form.Control.Feedback>
-                    </Form.Group>
-                  </Col>
-                  <Col md={4}>
+                        <Form.Label>
+                          Field Key <span className="text-danger">*</span>
+                        </Form.Label>
+                        <Form.Control
+                          type="text"
+                          name="key"
+                          value={field.key}
+                          onChange={(e) => handleFieldChange(index, e)}
+                          isInvalid={
+                            !!(
+                              validationErrors.fields &&
+                              validationErrors.fields[index] &&
+                              validationErrors.fields[index].key
+                            )
+                          }
+                        />
+                        <Form.Control.Feedback type="invalid">
+                          {validationErrors.fields &&
+                            validationErrors.fields[index] &&
+                            validationErrors.fields[index].key}
+                        </Form.Control.Feedback>
+                      </Form.Group>
+                    </Col>
+                    <Col md={6}>
+                      <Form.Group
+                        className="mb-3"
+                        controlId={`fieldLabel_${index}`}
+                      >
+                        <Form.Label>
+                          Field Label <span className="text-danger">*</span>
+                        </Form.Label>
+                        <Form.Control
+                          type="text"
+                          name="label"
+                          value={field.label}
+                          onChange={(e) => handleFieldChange(index, e)}
+                          isInvalid={
+                            !!(
+                              validationErrors.fields &&
+                              validationErrors.fields[index] &&
+                              validationErrors.fields[index].label
+                            )
+                          }
+                        />
+                        <Form.Control.Feedback type="invalid">
+                          {validationErrors.fields &&
+                            validationErrors.fields[index] &&
+                            validationErrors.fields[index].label}
+                        </Form.Control.Feedback>
+                      </Form.Group>
+                    </Col>
+                    <Col md={1} className="d-flex justify-content-end">
+                      {/* Remove Field Button */}
+                      <Button
+                        variant="outline-danger"
+                        onClick={() => handleRemoveField(index)}
+                        size="sm"
+                        aria-label={`Remove field ${field.label || index + 1}`}
+                      >
+                        &times; {/* Simple 'x' icon */}
+                      </Button>
+                    </Col>
+                  </Row>
+
+                  <Row>
+                    <Col md={12}>
+                      {" "}
+                      {/* Prompt field takes full width */}
+                      <Form.Group
+                        className="mb-3"
+                        controlId={`fieldPrompt_${index}`}
+                      >
+                        <Form.Label>
+                          Prompt <span className="text-danger">*</span>{" "}
+                          {/* Assuming prompt is required */}
+                        </Form.Label>
+                        <Form.Control
+                          type="text"
+                          name="prompt"
+                          value={field.prompt}
+                          onChange={(e) => handleFieldChange(index, e)}
+                          isInvalid={
+                            !!(
+                              validationErrors.fields &&
+                              validationErrors.fields[index] &&
+                              validationErrors.fields[index].prompt
+                            )
+                          }
+                        />
+                        <Form.Control.Feedback type="invalid">
+                          {validationErrors.fields &&
+                            validationErrors.fields[index] &&
+                            validationErrors.fields[index].prompt}
+                        </Form.Control.Feedback>
+                      </Form.Group>
+                    </Col>
+                  </Row>
+
+                  <Row>
+                    <Col md={4}>
+                      <Form.Group
+                        className="mb-3"
+                        controlId={`fieldType_${index}`}
+                      >
+                        <Form.Label>
+                          Type <span className="text-danger">*</span>
+                        </Form.Label>
+                        <Form.Select
+                          name="type"
+                          value={field.type}
+                          onChange={(e) => handleFieldChange(index, e)}
+                          isInvalid={
+                            !!(
+                              validationErrors.fields &&
+                              validationErrors.fields[index] &&
+                              validationErrors.fields[index].type
+                            )
+                          }
+                        >
+                          {FIELD_TYPES.map((type) => (
+                            <option key={type} value={type}>
+                              {type}
+                            </option>
+                          ))}
+                        </Form.Select>
+                        <Form.Control.Feedback type="invalid">
+                          {validationErrors.fields &&
+                            validationErrors.fields[index] &&
+                            validationErrors.fields[index].type}
+                        </Form.Control.Feedback>
+                      </Form.Group>
+                    </Col>
+                    <Col md={4}>
+                      <Form.Group
+                        className="mb-3"
+                        controlId={`fieldRequired_${index}`}
+                      >
+                        <Form.Check
+                          type="checkbox"
+                          label="Required"
+                          name="required"
+                          checked={field.required}
+                          onChange={(e) => handleFieldChange(index, e)}
+                          // isInvalid prop is less common for checkboxes
+                        />
+                      </Form.Group>
+                    </Col>
+                  </Row>
+
+                  {/* Conditional Options Input for Select/Multiselect */}
+                  {(field.type === "select" ||
+                    field.type === "multiselect") && (
                     <Form.Group
                       className="mb-3"
-                      controlId={`fieldRequired_${index}`}
-                    >
-                      <Form.Check
-                        type="checkbox"
-                        label="Required"
-                        name="required"
-                        checked={field.required}
-                        onChange={(e) => handleFieldChange(index, e)}
-                        // isInvalid prop is less common for checkboxes based on their own value,
-                        // but validationErrors structure supports it if needed for other reasons.
-                      />
-                    </Form.Group>
-                  </Col>
-                </Row>
-
-                {/* Conditional Options Input for Select/Multiselect */}
-                {(field.type === "select" || field.type === "multiselect") && (
-                  <Form.Group
-                    className="mb-3"
-                    controlId={`fieldOptions_${index}`}
-                  >
-                    <Form.Label>
-                      Options (comma-separated){" "}
-                      <span className="text-danger">*</span>
-                    </Form.Label>
-                    <Form.Control
-                      type="text"
-                      value={field.options.join(", ")} // Display options as comma-separated string
-                      onChange={(e) => handleOptionsChange(index, e)} // Special handler for options
-                      isInvalid={
-                        !!(
-                          validationErrors.fields &&
-                          validationErrors.fields[index] &&
-                          validationErrors.fields[index].options
-                        )
-                      }
-                      placeholder="Option 1, Option 2, Option 3"
-                    />
-                    <Form.Control.Feedback type="invalid">
-                      {validationErrors.fields &&
-                        validationErrors.fields[index] &&
-                        validationErrors.fields[index].options}
-                    </Form.Control.Feedback>
-                  </Form.Group>
-                )}
-
-                {/* min_value and max_value inputs - Dynamically change type */}
-                <Row>
-                  <Col md={6}>
-                    <Form.Group
-                      className="mb-3"
-                      controlId={`fieldMinValue_${index}`}
+                      controlId={`fieldOptions_${index}`}
                     >
                       <Form.Label>
-                        Min Value <span className="text-danger">*</span>
+                        Options (comma-separated){" "}
+                        <span className="text-danger">*</span>
                       </Form.Label>
                       <Form.Control
-                        // Dynamically set the input type based on the field's selected type
-                        type={getMinMaxValueInputType(field.type)}
-                        name="min_value"
-                        value={field.min_value}
-                        onChange={(e) => handleFieldChange(index, e)}
+                        type="text"
+                        value={field.options.join(", ")} // Display options as comma-separated string
+                        onChange={(e) => handleOptionsChange(index, e)} // Special handler for options
                         isInvalid={
                           !!(
                             validationErrors.fields &&
                             validationErrors.fields[index] &&
-                            validationErrors.fields[index].min_value
+                            validationErrors.fields[index].options
                           )
                         }
-                        // Add step="any" for number inputs to allow decimals
-                        step={field.type === "number" ? "any" : undefined}
+                        placeholder="Option 1, Option 2, Option 3"
                       />
                       <Form.Control.Feedback type="invalid">
                         {validationErrors.fields &&
                           validationErrors.fields[index] &&
-                          validationErrors.fields[index].min_value}
+                          validationErrors.fields[index].options}
                       </Form.Control.Feedback>
                     </Form.Group>
-                  </Col>
-                  <Col md={6}>
-                    <Form.Group
-                      className="mb-3"
-                      controlId={`fieldMaxValue_${index}`}
-                    >
-                      <Form.Label>
-                        Max Value <span className="text-danger">*</span>
-                      </Form.Label>
-                      <Form.Control
-                        // Dynamically set the input type based on the field's selected type
-                        type={getMinMaxValueInputType(field.type)}
-                        name="max_value"
-                        value={field.max_value}
-                        onChange={(e) => handleFieldChange(index, e)}
-                        isInvalid={
-                          !!(
-                            validationErrors.fields &&
+                  )}
+
+                  {/* min_value and max_value inputs - Dynamically change type and required indicator */}
+                  <Row>
+                    <Col md={6}>
+                      <Form.Group
+                        className="mb-3"
+                        controlId={`fieldMinValue_${index}`}
+                      >
+                        <Form.Label>
+                          Min Value{" "}
+                          {isMinMaxRequired && (
+                            <span className="text-danger">*</span>
+                          )}
+                          {/* <--- Conditional Required */}
+                        </Form.Label>
+                        <Form.Control
+                          // Dynamically set the input type based on the field's selected type
+                          type={getMinMaxValueInputType(field.type)}
+                          name="min_value"
+                          value={field.min_value}
+                          onChange={(e) => handleFieldChange(index, e)}
+                          isInvalid={
+                            !!(
+                              validationErrors.fields &&
+                              validationErrors.fields[index] &&
+                              validationErrors.fields[index].min_value
+                            )
+                          }
+                          // Add step="any" for number inputs to allow decimals
+                          step={field.type === "number" ? "any" : undefined}
+                        />
+                        <Form.Control.Feedback type="invalid">
+                          {validationErrors.fields &&
                             validationErrors.fields[index] &&
-                            validationErrors.fields[index].max_value
-                          )
-                        }
-                        // Add step="any" for number inputs to allow decimals
-                        step={field.type === "number" ? "any" : undefined}
-                      />
-                      <Form.Control.Feedback type="invalid">
-                        {validationErrors.fields &&
-                          validationErrors.fields[index] &&
-                          validationErrors.fields[index].max_value}
-                      </Form.Control.Feedback>
-                    </Form.Group>
-                  </Col>
-                </Row>
-              </Card>
-            ))}
+                            validationErrors.fields[index].min_value}
+                        </Form.Control.Feedback>
+                      </Form.Group>
+                    </Col>
+                    <Col md={6}>
+                      <Form.Group
+                        className="mb-3"
+                        controlId={`fieldMaxValue_${index}`}
+                      >
+                        <Form.Label>
+                          Max Value{" "}
+                          {isMinMaxRequired && (
+                            <span className="text-danger">*</span>
+                          )}
+                          {/* <--- Conditional Required */}
+                        </Form.Label>
+                        <Form.Control
+                          // Dynamically set the input type based on the field's selected type
+                          type={getMinMaxValueInputType(field.type)}
+                          name="max_value"
+                          value={field.max_value}
+                          onChange={(e) => handleFieldChange(index, e)}
+                          isInvalid={
+                            !!(
+                              validationErrors.fields &&
+                              validationErrors.fields[index] &&
+                              validationErrors.fields[index].max_value
+                            )
+                          }
+                          // Add step="any" for number inputs to allow decimals
+                          step={field.type === "number" ? "any" : undefined}
+                        />
+                        <Form.Control.Feedback type="invalid">
+                          {validationErrors.fields &&
+                            validationErrors.fields[index] &&
+                            validationErrors.fields[index].max_value}
+                        </Form.Control.Feedback>
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                </Card>
+              );
+            })}
 
             {/* Button to add a new field */}
             <Button variant="secondary" onClick={handleAddField}>
