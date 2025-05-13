@@ -27,7 +27,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         {/* Admin Console Routes */}
-        <Route path="/console" element={<PrivateRoute />}>
+        <Route path="/console" element={<PrivateRoute role={"admin"}/>}>
           <Route path="" element={<AdminDashboard />} />
           <Route path="applications" element={<ApplicationsPage />} />
           <Route path="applications/:id" element={<SubmissionDetails />} />
@@ -48,7 +48,7 @@ function App() {
         </Route>
 
         {/* Applicant/User Routes */}
-        <Route path="/" element={<PrivateRoute />}>
+        <Route path="/" element={<PrivateRoute role={"applicant"} />}>
           <Route path="" element={<AvailableLoans />} />
           <Route path="dashboard" element={<UserDashboard />} />
           <Route

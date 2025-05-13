@@ -1,11 +1,20 @@
 // src/PrivateRoute.js
-import React from 'react';
 import { Navigate } from 'react-router-dom';
 import Layout from './components/super/Layout';
 
-const PrivateRoute = () => {
+const PrivateRoute = ({ role }) => {
+  
 const token = localStorage.getItem('token');
-  // return <Layout/>
+const userRole = localStorage.getItem('type');
+  if (userRole !== role) {
+    console.log('Role:', role);
+    if (userRole === 'admin' || userRole === 'manager' || userRole === 'staff ') {
+      return <Navigate to="/console" />;
+    }
+    if (userRole === 'applicant') {
+      return <Navigate to="/" />;
+    }
+  }
   return token ? <Layout/> : <Navigate to="/login" />;
 };
 
