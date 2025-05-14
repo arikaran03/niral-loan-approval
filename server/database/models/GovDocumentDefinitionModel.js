@@ -73,10 +73,20 @@ const GovDocumentSchemaDefinition = new mongoose.Schema(
         min_value: {
           type: String,
           required: true,
+          required: function () {
+            // 'this' refers to the current subdocument (the field object being validated)
+            const nonApplicableTypes = ["image", "document"]; // Define types where min/max are not required
+            return !nonApplicableTypes.includes(this.type); // Required only if type is NOT image or document
+          },
         },
         max_value: {
           type: String,
           required: true,
+          // --- MODIFIED: Make required conditional based on type ---
+          required: function () {
+            const nonApplicableTypes = ["image", "document"];
+            return !nonApplicableTypes.includes(this.type);
+          },
         },
       },
     ],
