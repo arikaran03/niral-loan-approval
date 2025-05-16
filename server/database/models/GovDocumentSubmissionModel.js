@@ -1,144 +1,157 @@
+// src/models/GovDocumentSubmission.js
 import mongoose from "mongoose";
+// We need to import GovDocumentDefinitionModel to fetch the schema definition for validation
+import GovDocumentDefinitionModel from './GovDocumentDefinitionModel.js';
 
-// Assume 'Image' model stores file metadata (_id, filename, contentType, path/buffer, uploadedBy, etc.)
-// import Image from './Image'; // Ensure you have your file model imported or defined elsewhere
-
-// --- The Subdocument Schema (Remains the same) ---
+// --- The Subdocument Schema (submissionFieldSchema) ---
 const submissionFieldSchema = new mongoose.Schema(
   {
-    field_id: { type: String, required: true },
-    field_label: { type: String, required: true },
+    field_id: { type: String, required: true, comment: "Matches 'key' from the GovDocumentDefinition's fields array." }, 
+    field_label: { type: String, required: true, comment: "Label of the field at the time of submission." },
     type: {
       type: String,
       enum: [
-        "image",
-        "document",
-        "text",
-        "number",
-        "date",
-        "datetime",
-        "time",
-        "textarea",
-        "select",
-        "checkbox",
-        "multiselect",
+        "image", "document", "text", "number", "date",
+        "datetime", "time", "textarea", "select", "checkbox", "multiselect",
       ],
       required: true,
+      comment: "Data type of the field as defined in the GovDocumentDefinition."
     },
     value: {
       type: mongoose.Schema.Types.Mixed,
       required: function () {
         return this.type !== "image" && this.type !== "document";
       },
+      comment: "Value for non-file type fields."
     },
     fileRef: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Image", // *** CHANGE 'Image' TO YOUR ACTUAL FILE MODEL NAME ***
+      ref: "File", 
       required: function () {
         return this.type === "image" || this.type === "document";
       },
+      comment: "Reference to the uploaded file in the 'Files' collection for image/document types."
     },
   },
-  { _id: false }
-); // _id: false is crucial for subdocuments
+  { _id: false, comment: "Subdocument for individual field submissions." } 
+);
 
-// --- Parent Schema renamed to GovDocumentSubmissionSchema ---
-// This schema contains the array of submission fields using submissionFieldSchema.
+// --- Parent Schema: GovDocumentSubmissionSchema ---
 const GovDocumentSubmissionSchema = new mongoose.Schema(
   {
-    // Added schema_id field
-    schema_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "GovSchema",
-      required: true,
+    schema_id: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: "GovDocumentDefinition", 
+      required: [true, "Schema definition ID is required."],
       index: true,
+      comment: "Reference to the GovDocumentDefinition used for this submission."
     },
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    }, // User who is submitting
-    // Added created_by field
+      ref: "User", 
+      required: [true, "User ID for the owner of the submission is required."],
+      index: true,
+      comment: "User who owns this submission."
+    },
     created_by: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    }, // User account that initiated the creation
-
-    // Removed submission_date and status
-
-    // This is where the submissionFieldSchema is used as an array of subdocuments
-    fields: {
-      type: [submissionFieldSchema], // Array of subdocuments using the schema
-      default: [],
+      ref: "User", 
+      required: [true, "Creator user ID is required."],
+      comment: "User account that initiated the submission creation."
     },
-
-    // ... other fields relevant to this submission type ...
+    fields: {
+      type: [submissionFieldSchema], 
+      default: [],
+      comment: "Array of submitted field data."
+    },
+    // *** MODIFIED: Store an array of submitted unique identifiers ***
+    submitted_unique_identifiers: [
+      {
+        _id: false, // No need for individual _id for these sub-objects
+        key: { type: String, required: true, trim: true, comment: "The 'key' of the unique identifier field from GovDocumentDefinition." },
+        value: { type: String, required: true, trim: true, comment: "The submitted value for this unique identifier." }
+      }
+    ]
   },
   {
-    // Use timestamps to automatically add created_at and updated_at
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
+    comment: "Schema for storing submissions made against a GovDocumentDefinition."
   }
 );
 
-// --- Middleware (Applied to the PARENT Schema: GovDocumentSubmissionSchema) ---
-// Middleware functions are attached to this top-level schema.
-// The previous middleware logic related to 'status' and 'submission_date' has been removed.
-GovDocumentSubmissionSchema.pre("save", function (next) {
-  console.log(
-    "GovDocumentSubmission document is being saved. Checking fields..."
-  );
+// --- Middleware for GovDocumentSubmissionSchema ---
+GovDocumentSubmissionSchema.pre("save", async function (next) { 
+  console.log("GovDocumentSubmission document is about to be saved/updated. Performing validations...");
 
-  // Example middleware logic: Ensure 'value' is not null for certain types/fields
-  // This logic runs when a GovDocumentSubmission document is saved.
-  for (const field of this.fields) {
-    if (
-      field.type === "text" &&
-      (field.value === null ||
-        field.value === undefined ||
-        field.value.toString().trim() === "")
-    ) {
-      // Example validation: Prevent saving if a required text field is empty
-      // return next(new Error(`Field "${field.field_label}" (ID: ${field.field_id}) of type 'text' requires a non-empty value.`));
-      // Or just log a warning
-      console.warn(
-        `Field "${field.field_label}" (ID: ${field.field_id}) is text type but has no value.`
-      );
+  this.fields.forEach(field => {
+    if (field.type === "image" || field.type === "document") {
+      field.value = undefined; 
+    } else {
+      field.fileRef = undefined;
     }
-    // Add other validation logic for other field types or specific field_ids as needed
+  });
+
+  if (this.isNew || this.isModified('fields') || this.isModified('schema_id')) { // Also run if schema_id changes, though unlikely
+    try {
+      const documentDefinition = await GovDocumentDefinitionModel.findById(this.schema_id);
+      if (!documentDefinition) {
+        return next(new Error(`Document definition with ID '${this.schema_id}' not found. Cannot validate submission.`));
+      }
+
+      const uniqueIdentifierDefFields = documentDefinition.fields.filter(
+        (defField) => defField.is_unique_identifier === true
+      );
+
+      // Clear existing submitted_unique_identifiers to repopulate
+      this.submitted_unique_identifiers = []; 
+      let atLeastOneUniqueIdentifierSubmittedWithValue = false;
+
+      if (uniqueIdentifierDefFields.length === 0) {
+        console.warn(`The document definition '${documentDefinition.name}' (ID: ${this.schema_id}) has no fields marked as unique identifiers. Skipping unique value check for submission.`);
+      } else {
+        for (const defField of uniqueIdentifierDefFields) {
+          const submittedField = this.fields.find(
+            (subField) => subField.field_id === defField.key 
+          );
+
+          if (submittedField && submittedField.value !== null && submittedField.value !== undefined && String(submittedField.value).trim() !== "") {
+            // Add to our array of submitted unique identifiers
+            this.submitted_unique_identifiers.push({
+                key: defField.key,
+                value: String(submittedField.value).trim()
+            });
+            atLeastOneUniqueIdentifierSubmittedWithValue = true;
+          } else if (defField.required && !submittedField) { 
+            console.warn(`Required unique identifier field '${defField.label}' (key: ${defField.key}) was not found in submission fields.`);
+            // This specific field was required by definition but not submitted.
+            // The overall check below will ensure at least one *other* unique ID was submitted if this one was missed.
+          }
+        }
+
+        if (!atLeastOneUniqueIdentifierSubmittedWithValue) {
+          const uniqueFieldLabels = uniqueIdentifierDefFields.map(f => `"${f.label}" (key: ${f.key})`).join(" or ");
+          return next(new Error(`Submission requires at least one of the defined unique identifier fields (${uniqueFieldLabels}) to have a non-empty value.`));
+        }
+      }
+    } catch (error) {
+      console.error("Error during unique identifier validation in GovDocumentSubmission:", error);
+      return next(error);
+    }
   }
 
-  // Add any new middleware logic related to schema_id, created_by, or other fields here
-
-  next(); // Continue the save operation
+  next(); 
 });
 
-// --- Indexes (Defined on the PARENT Schema: GovDocumentSubmissionSchema) ---
-// Indexes are defined on this top-level schema to optimize queries.
+// --- Indexes for GovDocumentSubmissionSchema ---
+GovDocumentSubmissionSchema.index({ user_id: 1, schema_id: 1 }); 
+// Index for querying by specific submitted unique identifiers
+GovDocumentSubmissionSchema.index({ schema_id: 1, "submitted_unique_identifiers.key": 1, "submitted_unique_identifiers.value": 1 });
 
-// Index on the schema_id for efficient lookups of submissions for a specific schema
-GovDocumentSubmissionSchema.index({ schema_id: 1 });
 
-// Index on user_id for efficient lookups of submissions by a specific user
-GovDocumentSubmissionSchema.index({ user_id: 1 });
-
-// Example of an index on a field *within* the subdocument array:
-GovDocumentSubmissionSchema.index({ "fields.field_id": 1 });
-
-// Query submissions for a schema based on a specific field value within the fields array
-GovDocumentSubmissionSchema.index({ schema_id: 1, "fields.field_id": 1 });
-
-// You could add more indexes depending on your query patterns.
-
-// --- Creating the Parent Model ---
-// You create a Mongoose model from the PARENT schema.
+// --- Creating the Model ---
 const GovDocumentSubmissionModel = mongoose.model(
   "GovDocumentSubmission",
   GovDocumentSubmissionSchema
 );
 
-// You typically export the parent model for use in your application.
-// export default GovDocumentSubmissionModel;
-
-// Exporting all for demonstration purposes if needed elsewhere
 export default GovDocumentSubmissionModel;

@@ -1,50 +1,84 @@
-// schema.routes.js
+// routes/schema.routes.js
 import express from "express";
-import * as schemaController from "../controllers/schema.controller.js"; // Import all exports
+import {
+  createSchemaDefinition,
+  getAllSchemaDefinitions,
+  getSchemaDefinitionById,
+  getSchemaDefinitionBySchemaIdString, // <<< ADDED IMPORT
+  submitDocumentData,
+  checkDocumentUniqueness
+} from "../controllers/schema.controller.js"; 
 import multer from "multer";
-// Assume you have configured and imported multer middleware
-// import upload from '../middleware/uploadMiddleware'; // Example multer configuration
+import { requireRole } from '../middlewares/auth.js'; 
 
 const router = express.Router();
 
 const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+const allowedMimeTypes = [
+    'image/jpeg', 
+    'image/png', 
+    'application/pdf'
+];
 
-// --- Routes for Schema Definitions ---
+const fileFilter = (req, file, cb) => {
+  if (allowedMimeTypes.includes(file.mimetype)) {
+    cb(null, true); 
+  } else {
+    cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', `Invalid file type: ${file.mimetype}. Only JPEG, PNG, and PDF are allowed.`), false);
+  }
+};
 
-// POST route to create a new document schema definition
-// Handles the request from the admin schema definition form (DynamicDocumentForm.js)
-router.post("/schema-definition", schemaController.createSchemaDefinition);
+const upload = multer({ 
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 15 * 1024 * 1024 
+  }
+});
 
-// GET route to fetch ALL schema definitions (for the list in submission form)
-// Handles the initial fetch by DynamicDocumentSubmissionForm.js
-router.get("/schema-definitions", schemaController.getAllSchemaDefinitions); // New route
+// --- Routes for Schema Definitions (GovDocumentDefinition) ---
 
-// GET route to fetch a single schema definition by its ID
-// Handles fetching the specific schema details when selected in the submission form
-router.get(
-  "/schema-definition/:schemaId",
-  schemaController.getSchemaDefinitionById // Now connected to the controller function
+router.post(
+    "/schema-definition",
+    requireRole(['admin', 'manager']), 
+    createSchemaDefinition
 );
 
-// --- Route for Document Submissions ---
+router.get(
+    "/schema-definitions",
+    requireRole(['admin', 'manager', 'staff', 'user', 'applicant']), 
+    getAllSchemaDefinitions
+);
 
-// POST route to submit document data for a specific schema
-// Handles the request from the DynamicDocumentSubmissionForm.js
-// NOTE: This route REQUIRES file upload middleware (like multer) before the controller
-// Example using a hypothetical 'upload' middleware configured for multiple files:
-// router.post("/submission", upload.any(), schemaController.submitDocumentData); // Example with multer.any()
-// Or configure multer fields specifically if you know the field names:
-// router.post("/submission", upload.fields([...]), schemaController.submitDocumentData);
+// GET route to fetch a single schema definition by its Mongoose _id
+router.get(
+  "/schema-definition/:id", 
+  requireRole(['admin', 'manager', 'staff', 'user', 'applicant']),
+  getSchemaDefinitionById 
+);
 
-// For this example, we'll add the route assuming middleware is applied elsewhere or you add it here:
+// --- NEW ROUTE ---
+// GET route to fetch a single schema definition by its string schema_id (e.g., "aadhaar_card")
+router.get(
+  "/schema-definition/by-schema-id/:schema_id_string", // <<< NEW ROUTE
+  requireRole(['admin', 'manager', 'staff', 'user', 'applicant']), // Adjust roles as needed
+  getSchemaDefinitionBySchemaIdString // <<< NEW CONTROLLER FUNCTION
+);
+
+
+// --- Routes for Document Submissions (GovDocumentSubmission) ---
+
 router.post(
   "/submission",
-  upload.single("image"),
-  schemaController.submitDocumentData
-); // Add your multer middleware BEFORE schemaController.submitDocumentData
+  requireRole(['user', 'applicant']), 
+  upload.any(), 
+  submitDocumentData
+);
 
-// You will need to ensure your express app uses a body-parser middleware for JSON/URL-encoded bodies
-// and specifically configure multer or similar for handling multipart/form-data on the '/submission' route.
+router.post(
+    "/check-unique",
+    requireRole(['user', 'applicant', 'staff', 'manager']), 
+    checkDocumentUniqueness
+);
 
 export default router;

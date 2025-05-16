@@ -1,173 +1,178 @@
+// src/models/GovDocumentDefinition.js
 import mongoose from "mongoose";
 
 // Schema to define the structure of a dynamic government document type
-// This will be created by the admin when they add a new required document type dynamically.
 const GovDocumentSchemaDefinition = new mongoose.Schema(
   {
-    // Unique identifier for the schema (e.g., 'tc' for Transfer Certificate, 'voter_id' for Voter ID)
     schema_id: {
       type: String,
-      required: true,
-      unique: true, // Ensure schema_id is unique
+      required: [true, "Schema ID is required."],
+      unique: true, 
       trim: true,
+      comment: "Unique identifier for the schema (e.g., 'aadhaar_card', 'pan_card')."
     },
-    // Human-readable name for the document type (e.g., 'Transfer Certificate', 'Voter ID')
     name: {
       type: String,
-      required: true,
+      required: [true, "Document name is required."],
       trim: true,
+      comment: "Human-readable name for the document type (e.g., 'Aadhaar Card', 'PAN Card')."
     },
-    // Description or purpose of the document
     description: {
       type: String,
       trim: true,
-      required: true,
-      default: undefined, // Explicit default
+      required: [true, "Document description is required."],
+      comment: "Description or purpose of the document."
     },
-    // Array of fields required for this document type, using an inline subdocument schema
     fields: [
       {
-        // The key or name of the field (e.g., 'tc_number', 'student_name', 'issuing_authority')
         key: {
           type: String,
-          required: true,
+          required: [true, "Field key is required."],
           trim: true,
+          comment: "The key or name of the field (e.g., 'aadhaar_number', 'pan_id')."
         },
-        // A user-friendly label for the field (e.g., 'Transfer Certificate Number', 'Student Full Name')
         label: {
           type: String,
-          required: true,
+          required: [true, "Field label is required."],
           trim: true,
+          comment: "A user-friendly label for the field (e.g., 'Aadhaar Number', 'PAN')."
         },
-        prompt: {
+        prompt: { // General prompt for data entry
           type: String,
-          required: true,
+          required: [true, "Field prompt is required."],
           trim: true,
+          comment: "General prompt guiding the user for data entry for this field."
         },
-        // Optional: Specify the expected data type (e.g., 'text', 'number', 'date')
         type: {
           type: String,
           enum: [
-            "text",
-            "number",
-            "date",
-            "textarea",
-            "select",
-            "checkbox",
-            "multiselect",
-            "image",
-            "document",
-          ], // Add other types as needed
+            "text", "number", "date", "textarea", "select",
+            "checkbox", "multiselect", "image", "document",
+          ],
           default: "text",
+          comment: "Expected data type for the field."
         },
-        // Optional: Indicate if the field is required when submitting data
-        required: {
+        required: { // Whether this field must be filled by the user
           type: Boolean,
           default: false,
+          comment: "Indicates if the field is mandatory for submission."
         },
-        // Optional: For 'select', 'checkbox', 'multiselect' types
-        options: {
+        options: { // For 'select', 'checkbox', 'multiselect' types
           type: [String],
           default: undefined,
+          comment: "Array of options for select, checkbox, or multiselect types."
         },
-        min_value: {
-          type: String,
-          required: true,
+        min_value: { // Renamed from min_length for consistency if it represents numeric/date min
+          type: String, // Kept as String as per original schema, but consider Number/Date for type:'number'/'date'
+          // MODIFIED: Conditional requirement based on type
           required: function () {
-            // 'this' refers to the current subdocument (the field object being validated)
-            const nonApplicableTypes = ["image", "document"]; // Define types where min/max are not required
-            return !nonApplicableTypes.includes(this.type); // Required only if type is NOT image or document
+            const applicableTypes = ["text", "textarea", "number", "date", "datetime", "time"];
+            return applicableTypes.includes(this.type);
           },
+          comment: "Minimum value or length constraint, applicable based on field type."
         },
-        max_value: {
-          type: String,
-          required: true,
-          // --- MODIFIED: Make required conditional based on type ---
+        max_value: { // Renamed from max_length
+          type: String, // Kept as String
+          // MODIFIED: Conditional requirement based on type
           required: function () {
-            const nonApplicableTypes = ["image", "document"];
-            return !nonApplicableTypes.includes(this.type);
+            const applicableTypes = ["text", "textarea", "number", "date", "datetime", "time"];
+            return applicableTypes.includes(this.type);
           },
+          comment: "Maximum value or length constraint, applicable based on field type."
         },
+        // *** NEW FIELD for marking unique identifiers ***
+        is_unique_identifier: {
+          type: Boolean,
+          default: false,
+          comment: "Marks this field as a unique identifier for fetching the submitted document. Must be of type 'text' and required."
+        },
+        // *** NEW FIELD for specific prompt for unique identifiers ***
+        unique_identifier_prompt: {
+            type: String,
+            trim: true,
+            // Required only if is_unique_identifier is true
+            required: function() { return this.is_unique_identifier === true; },
+            comment: "Specific prompt for unique identifier fields, e.g., 'Enter 12-digit number without spaces'."
+        }
       },
     ],
   },
   {
-    timestamps: true, // Automatically add createdAt and updatedAt fields
+    timestamps: true, 
   }
 );
 
-// --- Middleware (Applied to the GovDocumentSchemaDefinition schema) ---
-
-// Example pre-save middleware
+// --- Middleware ---
 GovDocumentSchemaDefinition.pre("save", function (next) {
-  console.log(`Saving document definition with schema_id: ${this.schema_id}`);
+  console.log(`Validating document definition with schema_id: ${this.schema_id}`);
 
-  // You can add validation or logic here.
-  // For example, validate that min_value and max_value make sense for 'number' type fields.
-  // Note: As requested, min_value/max_value are required strings on *all* field definitions.
-  // You might need more specific validation logic depending on the field 'type'.
+  let uniqueIdentifierFound = false;
+  const errors = [];
 
   for (const field of this.fields) {
-    // Example check (since they are required strings as requested)
-    if (!field.min_value || !field.max_value) {
-      // This check is technically redundant because they are required, but demonstrates middleware access
-      console.warn(
-        `Field "${field.label}" (key: ${field.key}) is missing min_value or max_value (even though schema marks them required).`
-      );
-      // If they weren't required in schema but you needed validation here:
-      // return next(new Error(`Field "${field.label}" requires both min_value and max_value.`));
-    }
-
-    // Example: If type is 'number', maybe try parsing min/max values?
+    // Validate min_value and max_value based on type (example for numbers)
     if (field.type === "number") {
-      // Be cautious if they are defined as REQUIRED strings in the schema,
-      // but you expect them to be numbers for validation here.
-      // You might add logic to check if the string is a valid number representation.
-      const minValueNum = parseFloat(field.min_value);
-      const maxValueNum = parseFloat(field.max_value);
-
-      if (isNaN(minValueNum) || isNaN(maxValueNum)) {
-        console.warn(
-          `Field "${field.label}" (key: ${field.key}) is type 'number', but min/max values are not valid numbers: "${field.min_value}", "${field.max_value}"`
-        );
-        // return next(new Error(`Min/max values for number field "${field.label}" must be valid numbers.`));
-      } else if (minValueNum > maxValueNum) {
-        console.warn(
-          `Field "${field.label}" (key: ${field.key}) has min_value (${minValueNum}) greater than max_value (${maxValueNum}).`
-        );
-        // return next(new Error(`Min value cannot be greater than max value for field "${field.label}".`));
+      if (field.required && (field.min_value === undefined || field.max_value === undefined)) {
+         // This check is now handled by the conditional required on min_value/max_value itself.
+         // However, you might want to ensure they are parseable as numbers here.
+      }
+      if (field.min_value !== undefined && field.max_value !== undefined) {
+        const minValueNum = parseFloat(field.min_value);
+        const maxValueNum = parseFloat(field.max_value);
+        if (isNaN(minValueNum) || isNaN(maxValueNum)) {
+          errors.push(`Min/max values for number field "${field.label}" must be valid numbers.`);
+        } else if (minValueNum > maxValueNum) {
+          errors.push(`Min value cannot be greater than max value for number field "${field.label}".`);
+        }
       }
     }
+
+    // Validations for unique identifier fields
+    if (field.is_unique_identifier === true) {
+      uniqueIdentifierFound = true;
+      if (field.type !== "text") {
+        errors.push(`Field "${field.label}" is marked as a unique identifier but is not of type 'text'. Unique identifiers must be text-based.`);
+      }
+      if (field.required !== true) {
+        errors.push(`Field "${field.label}" is marked as a unique identifier and therefore must be 'required'.`);
+      }
+      if (!field.unique_identifier_prompt || field.unique_identifier_prompt.trim() === "") {
+        errors.push(`Field "${field.label}" is marked as a unique identifier and requires a 'unique_identifier_prompt'.`);
+      }
+    } else {
+        // If not a unique identifier, unique_identifier_prompt should not be set or should be empty
+        if (field.unique_identifier_prompt && field.unique_identifier_prompt.trim() !== "") {
+            // Optionally, clear it or raise a warning/error if it's set for non-unique fields
+            // field.unique_identifier_prompt = undefined; 
+            // console.warn(`Field "${field.label}" has a unique_identifier_prompt but is not marked as a unique identifier.`);
+        }
+    }
+  }
+
+  if (!uniqueIdentifierFound) {
+    errors.push("At least one field must be marked as a unique identifier (is_unique_identifier: true).");
+  }
+
+  if (errors.length > 0) {
+    return next(new Error(errors.join("\n")));
   }
 
   next();
 });
 
-// Example post-save middleware
 GovDocumentSchemaDefinition.post("save", function (doc, next) {
-  console.log(`Document definition with schema_id: ${doc.schema_id} saved.`);
-  // You could perform actions after saving here, e.g., logging, sending notifications.
+  console.log(`Document definition with schema_id: ${doc.schema_id} saved successfully.`);
   next();
 });
 
-// --- Indexes (Defined on the GovDocumentSchemaDefinition schema) ---
-
-// Index on schema_id for quick lookups by the unique identifier
-GovDocumentSchemaDefinition.index({ schema_id: 1 }); // Unique index is implicitly created by schema definition, but explicit index is fine.
-
-// Index on name for lookups by the human-readable name
+// --- Indexes ---
 GovDocumentSchemaDefinition.index({ name: 1 });
-
-// Index on the 'key' field within the 'fields' subdocument array
-// This helps in querying document definitions that contain a field with a specific key.
 GovDocumentSchemaDefinition.index({ "fields.key": 1 });
+GovDocumentSchemaDefinition.index({ "fields.is_unique_identifier": 1 }); // Index for finding schemas with unique ID fields
 
-// --- Creating the Model ---
-// Create a Mongoose model from the schema definition
 const GovDocumentDefinitionModel = mongoose.model(
-  "GovDocumentDefinition",
+  "GovDocumentDefinition", // Consider renaming to GovDocumentSchema if it defines the schema structure
   GovDocumentSchemaDefinition
 );
 
-// Export the model for use in your application
 export default GovDocumentDefinitionModel;

@@ -6,7 +6,6 @@ import User from '../database/models/UserModel.js';
  */
 export async function getMyProfile(req, res) {
   try {
-
     const user = await User.findById(req.user._id).select('-password');
     if (!user) return res.status(404).json({ error: 'User not found.' });
     return res.json(user);

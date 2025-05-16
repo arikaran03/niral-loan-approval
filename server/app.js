@@ -16,7 +16,7 @@ import userRoutes from "./routes/user.routes.js";
 import adminUserRoutes from "./routes/adminUser.routes.js";
 import loanRoutes from "./routes/loan.routes.js";
 import loanSubmissionRoutes from "./routes/loanSubmission.routes.js";
-import imageRoutes from "./routes/Image.routes.js";
+import fileRoutes from "./routes/file.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import openAIRoutes from "./routes/openai.routes.js";
 import {
@@ -116,7 +116,7 @@ app.use("/api/loans", loanRoutes);
 app.use("/api/application", loanSubmissionRoutes);
 
 // Image upload & fetch
-app.use("/api/image", imageRoutes);
+app.use("/api/image", fileRoutes);
 
 // Admin-only dashboard stats
 app.use("/api/admin", adminRoutes);
@@ -126,6 +126,7 @@ app.use("/api/application", openAIRoutes);
 app.use("/api/repayments", applicantRepaymentRoutes); // For applicant-facing endpoints
 
 app.use("/api/admin/repayments", adminRepaymentRoutes); // For admin-facing endpoints
+
 app.use("/api/document", govSchemaRoutes);
 
 // Global error handler (catches both express-jwt errors and any thrown below)

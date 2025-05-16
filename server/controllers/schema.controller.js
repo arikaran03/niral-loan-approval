@@ -1,22 +1,16 @@
-import GovDocumentDefinitionModel from "../database/models/GovDocumentDefinitionModel.js"; // Adjust path as needed
-import GovDocumentSubmissionModel from "../database/models/GovDocumentSubmissionModel.js"; // Import the Submission Model
-// Assume you have a file upload helper or service
-// import { uploadFile } from '../services/fileUploadService'; // Example file upload helper
-
-// NOTE: This controller requires a file upload middleware like 'multer' configured
-// for the submission route to handle file uploads (req.files).
+// controllers/schema.controller.js (or your actual file path)
+import mongoose from "mongoose";
+import GovDocumentDefinitionModel from "../database/models/GovDocumentDefinitionModel.js"; 
+import GovDocumentSubmissionModel from "../database/models/GovDocumentSubmissionModel.js"; 
+import FileModel from "../database/models/FileModel.js"; 
 
 // --- Controller function to handle creating a new Schema Definition ---
-// (Your existing function remains the same)
 export const createSchemaDefinition = async (req, res) => {
   console.log(
     "Received POST request for /api/document/schema-definition (in controller)"
   );
-  console.log("Request Body:", req.body);
-
   const { schema_id, name, description, fields } = req.body;
 
-  // --- Server-side Validation ---
   if (
     !schema_id ||
     !name ||
@@ -24,56 +18,60 @@ export const createSchemaDefinition = async (req, res) => {
     !fields ||
     !Array.isArray(fields)
   ) {
-    console.error(
-      "Validation Error: Missing required top-level fields or fields is not an array."
-    );
     return res.status(400).json({
       message:
         "Missing required fields: schema_id, name, description, or fields array.",
     });
   }
 
+  const fieldValidationErrors = [];
   for (const field of fields) {
-    if (
-      !field.key ||
-      !field.label ||
-      !field.prompt ||
-      !field.type ||
-      field.min_value === undefined ||
-      field.max_value === undefined
-    ) {
-      console.error(
-        "Validation Error: Missing required field properties in fields array.",
-        field
-      );
-      let missingProp = "";
-      if (!field.key) missingProp = "key";
-      else if (!field.label) missingProp = "label";
-      else if (!field.prompt) missingProp = "prompt";
-      else if (!field.type) missingProp = "type";
-      else if (field.min_value === undefined) missingProp = "min_value";
-      else if (field.max_value === undefined) missingProp = "max_value";
-
-      return res.status(400).json({
-        message: `Field "${
+    if (!field.key || !field.label || !field.prompt || !field.type) {
+      fieldValidationErrors.push(
+        `Field "${
           field.label || field.key || "Unknown field"
-        }" is missing the required property: ${missingProp}.`,
-      });
+        }" is missing one or more required properties (key, label, prompt, type).`
+      );
     }
+    const applicableTypesForMinMax = ["text", "textarea", "number", "date", "datetime", "time"];
+    if (applicableTypesForMinMax.includes(field.type)) {
+        if (field.min_value === undefined || field.min_value === null || String(field.min_value).trim() === '') {
+             fieldValidationErrors.push(`Field "${field.label || field.key}" requires a non-empty min_value.`);
+        }
+        if (field.max_value === undefined || field.max_value === null || String(field.max_value).trim() === '') {
+             fieldValidationErrors.push(`Field "${field.label || field.key}" requires a non-empty max_value.`);
+        }
+    }
+
     if (
       (field.type === "select" || field.type === "multiselect") &&
       (!field.options ||
         !Array.isArray(field.options) ||
         field.options.length === 0)
     ) {
-      console.error(
-        "Validation Error: Options are required for select/multiselect types.",
-        field
+      fieldValidationErrors.push(
+        `Field "${field.label}" (key: ${field.key}) requires a non-empty options array for type "${field.type}".`
       );
-      return res.status(400).json({
-        message: `Field "${field.label}" (key: ${field.key}) requires options for type "${field.type}".`,
-      });
     }
+
+    if (field.is_unique_identifier === true) {
+        if (field.type !== "text") {
+            fieldValidationErrors.push(`Field "${field.label}" is marked as a unique identifier but is not of type 'text'.`);
+        }
+        if (field.required !== true) {
+            fieldValidationErrors.push(`Field "${field.label}" is marked as a unique identifier and therefore must be 'required'.`);
+        }
+        if (!field.unique_identifier_prompt || String(field.unique_identifier_prompt).trim() === "") {
+            fieldValidationErrors.push(`Field "${field.label}" is marked as a unique identifier and requires a non-empty 'unique_identifier_prompt'.`);
+        }
+    }
+  }
+
+  if (fieldValidationErrors.length > 0) {
+    return res.status(400).json({
+      message: "Validation errors in field definitions.",
+      errors: fieldValidationErrors,
+    });
   }
 
   try {
@@ -88,14 +86,14 @@ export const createSchemaDefinition = async (req, res) => {
         type: field.type,
         required: field.required || false,
         options: field.options,
-        min_value: field.min_value.trim(),
-        max_value: field.max_value.trim(),
+        min_value: field.min_value !== undefined ? String(field.min_value).trim() : undefined,
+        max_value: field.max_value !== undefined ? String(field.max_value).trim() : undefined,
+        is_unique_identifier: field.is_unique_identifier || false,
+        unique_identifier_prompt: field.is_unique_identifier ? (String(field.unique_identifier_prompt || '').trim() || field.prompt) : undefined,
       })),
     });
 
-    const savedSchemaDefinition = await newSchemaDefinition.save();
-
-    console.log("Schema Definition saved successfully:", savedSchemaDefinition);
+    const savedSchemaDefinition = await newSchemaDefinition.save(); 
 
     res.status(201).json({
       message: "Schema definition created successfully!",
@@ -103,20 +101,18 @@ export const createSchemaDefinition = async (req, res) => {
     });
   } catch (error) {
     console.error("Error saving schema definition:", error);
-
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map((err) => err.message);
       return res
         .status(400)
         .json({ message: "Validation failed", errors: messages });
     }
-
-    if (error.code === 11000) {
+    if (error.code === 11000) { 
+      const field = Object.keys(error.keyPattern)[0];
       return res
         .status(409)
-        .json({ message: `Schema with ID '${schema_id}' already exists.` });
+        .json({ message: `Schema definition with this '${field}' already exists: ${error.keyValue[field]}` });
     }
-
     res.status(500).json({
       message: "An error occurred while saving the schema definition.",
       error: error.message,
@@ -124,22 +120,12 @@ export const createSchemaDefinition = async (req, res) => {
   }
 };
 
-// --- Controller function to handle fetching all Schema Definitions ---
-// This function will be called by the router when a GET request hits /api/document/schema-definitions
 export const getAllSchemaDefinitions = async (req, res) => {
-  console.log(
-    "Received GET request for /api/document/schema-definitions (in controller)"
-  );
   try {
-    // Fetch all schema definitions, selecting only necessary fields for the list
     const schemas = await GovDocumentDefinitionModel.find(
       {},
-      "_id schema_id name description"
-    );
-
-    console.log(`Found ${schemas.length} schema definitions.`);
-
-    // Send the list of schemas in the response
+      "_id schema_id name description" 
+    ).sort({ name: 1 }); 
     res.status(200).json(schemas);
   } catch (error) {
     console.error("Error fetching schema definitions:", error);
@@ -150,207 +136,160 @@ export const getAllSchemaDefinitions = async (req, res) => {
   }
 };
 
-// --- Controller function to handle fetching a single Schema Definition by ID ---
-// This function will be called by the router when a GET request hits /api/document/schema-definition/:schemaId
 export const getSchemaDefinitionById = async (req, res) => {
-  const schemaId = req.params.schemaId;
-  console.log(
-    `Received GET request for /api/document/schema-definition/${schemaId} (in controller)`
-  );
+  const objectId = req.params.id; // Use .id as defined in the route
+  
+  if (!mongoose.Types.ObjectId.isValid(objectId)) {
+    return res.status(400).json({ message: "Invalid schema definition ID format." });
+  }
 
   try {
-    // Find the schema definition by its Mongoose _id
-    const schemaDefinition = await GovDocumentDefinitionModel.findById(
-      schemaId
-    );
-
+    const schemaDefinition = await GovDocumentDefinitionModel.findById(objectId);
     if (!schemaDefinition) {
-      console.warn(`Schema definition not found for ID: ${schemaId}`);
-      return res.status(404).json({ message: "Schema definition not found." });
+      return res.status(404).json({ message: "Schema definition not found with the given Object ID." });
     }
-
-    console.log(
-      `Found schema definition for ID: ${schemaId}`,
-      schemaDefinition
-    );
-
-    // Send the full schema definition in the response
     res.status(200).json(schemaDefinition);
   } catch (error) {
-    console.error(
-      `Error fetching schema definition for ID ${schemaId}:`,
-      error
-    );
-
-    // Check for invalid ObjectId format error
-    if (error.name === "CastError") {
-      return res.status(400).json({ message: "Invalid schema ID format." });
-    }
-
+    console.error(`Error fetching schema definition for ID ${objectId}:`, error);
     res.status(500).json({
-      message: "An error occurred while fetching the schema definition.",
+      message: "An error occurred while fetching the schema definition by Object ID.",
       error: error.message,
     });
   }
 };
 
-// --- Controller function to handle submitting document data ---
-// This function will be called by the router when a POST request hits /api/document/submission
-// NOTE: This requires file upload middleware like 'multer' to be configured for the route.
+// --- NEW CONTROLLER FUNCTION ---
+export const getSchemaDefinitionBySchemaIdString = async (req, res) => {
+  const schemaIdString = req.params.schema_id_string;
+  console.log(`Attempting to fetch schema by string ID: ${schemaIdString}`); // For debugging
+
+  if (!schemaIdString || typeof schemaIdString !== 'string' || schemaIdString.trim() === '') {
+    return res.status(400).json({ message: "Invalid or missing schema_id_string parameter." });
+  }
+
+  try {
+    // Find by the 'schema_id' field which stores strings like "aadhaar_card"
+    const schemaDefinition = await GovDocumentDefinitionModel.findOne({ schema_id: schemaIdString.trim() });
+    
+    if (!schemaDefinition) {
+      console.log(`Schema definition not found for schema_id: ${schemaIdString}`); // For debugging
+      return res.status(404).json({ message: `Schema definition not found for schema_id '${schemaIdString}'.` });
+    }
+    console.log(`Schema definition found for schema_id '${schemaIdString}':`, schemaDefinition.name); // For debugging
+    res.status(200).json(schemaDefinition);
+  } catch (error) {
+    console.error(`Error fetching schema definition for schema_id_string ${schemaIdString}:`, error);
+    res.status(500).json({
+      message: "An error occurred while fetching the schema definition by string schema_id.",
+      error: error.message,
+    });
+  }
+};
+
+
 export const submitDocumentData = async (req, res) => {
-  console.log(
-    "Received POST request for /api/document/submission (in controller)"
-  );
+  console.log("Received POST request for /api/document/submission");
+  const { schema_definition_id, fieldsData } = req.body; 
+  const user_id = req.user?._id; 
+  const created_by = req.user?._id;
 
-  // req.body will contain non-file fields (like schema_id, user_id, created_by, and fieldsData JSON string)
-  // req.files will contain the uploaded files if using a middleware like multer
-  console.log("Request Body:", req.body);
-  console.log("Received Files:", req.files); // Should be populated by multer or similar middleware
-
-  const { schema_id, fieldsData } = req.body;
-  const user_id = req.user._id;
-  const created_by = req.user._id;
-
-  // --- Server-side Validation ---
-  if (!schema_id || !user_id || !created_by || !fieldsData) {
-    console.error("Validation Error: Missing required submission data.");
+  if (!schema_definition_id || !user_id || !created_by || !fieldsData) {
     return res.status(400).json({
       message:
-        "Missing required submission data (schema_id, user_id, created_by, fieldsData).",
+        "Missing required submission data (schema_definition_id, user_id, created_by, fieldsData).",
     });
+  }
+  if (!mongoose.Types.ObjectId.isValid(schema_definition_id)) {
+      return res.status(400).json({ message: "Invalid schema_definition_id format." });
   }
 
   let parsedFieldsData;
   try {
-    // fieldsData is expected to be a JSON string from the frontend
     parsedFieldsData = JSON.parse(fieldsData);
     if (!Array.isArray(parsedFieldsData)) {
       throw new Error("fieldsData is not an array.");
     }
   } catch (parseError) {
-    console.error("Validation Error: Invalid fieldsData format.", parseError);
-    return res.status(400).json({ message: "Invalid format for fields data." });
+    return res.status(400).json({ message: "Invalid format for fieldsData JSON string." });
   }
 
   try {
-    // You might want to validate if the schema_id, user_id, created_by exist in your database
-    // For this example, we proceed assuming they are valid ObjectIds or strings
-
-    // Process fields data and handle file uploads
-    const submissionFields = [];
-    const uploadedFiles = req.files || {}; // Get uploaded files object from middleware
-
-    // Iterate through the non-file field data received from the frontend
-    for (const field of parsedFieldsData) {
-      if (!field.field_id || !field.field_label || !field.type) {
-        console.warn("Incomplete field data received:", field);
-        // Depending on your requirements, you might return an error or skip the field
-        continue; // Skip this malformed field entry
-      }
-
-      // Check if this field was meant to be a file upload type
-      if (field.type === "image" || field.type === "document") {
-        // Find the corresponding uploaded file using the field_id (which was the key in FormData)
-        const file = uploadedFiles[field.field_id];
-
-        if (file) {
-          // --- File Upload Logic ---
-          // This is where you would typically save the file to storage (S3, local disk, etc.)
-          // and get a reference (like a path, filename, or cloud storage URL/ID).
-          // The GovDocumentSubmissionModel expects a 'fileRef', which is a Mongoose ObjectId.
-          // This implies you have a separate 'Image' or 'File' model where you save file metadata
-          // and a reference to the actual file data.
-
-          // Example placeholder for file saving:
-          // Assuming `uploadFile` is a service that saves the file and returns the _id from your File model
-          // const fileRefId = await uploadFile(file); // Implement this service
-
-          // --- SIMPLIFIED PLACEHOLDER ---
-          // In a real app, replace this with actual file saving and getting the ObjectId
-          // For demonstration, let's assume req.files[field.field_id] provides enough info
-          // and you map it to your File model structure before getting the ID.
-          // If your File model just stores filename/path, you'd save the file and then create/find the File model entry.
-          // Since the schema requires ObjectId, let's assume you create a File document.
-          // Example: const newFile = new FileModel({ filename: file.originalname, path: file.path, ... }); await newFile.save(); const fileRefId = newFile._id;
-
-          // For this example, let's simulate saving and getting an ObjectId
-          // You MUST replace this with your actual file saving logic
-          const simulatedFileRefId = new mongoose.Types.ObjectId(); // Simulate getting a new ObjectId after saving file
-
-          submissionFields.push({
-            field_id: field.field_id,
-            field_label: field.field_label,
-            type: field.type,
-            // value is not used for file types in the submission model
-            fileRef: simulatedFileRefId, // Use the actual ObjectId from your saved file model
-          });
-
-          console.log(
-            `Processed file for field "${field.field_label}" (key: ${field.field_id}). Simulated fileRef: ${simulatedFileRefId}`
-          );
-        } else {
-          // This case should ideally be caught by frontend validation if required
-          // If it's a required file field and no file was uploaded, handle as an error
-          console.warn(
-            `File expected for field "${field.field_label}" (key: ${field.field_id}), but not found in upload.`
-          );
-          // You might add a check here if field was required in the definition:
-          // const definitionField = await GovDocumentDefinitionModel.findOne({ _id: schema_id, 'fields.key': field.field_id }, { 'fields.$': 1 });
-          // if (definitionField && definitionField.fields[0]?.required) {
-          //    return res.status(400).json({ message: `File for field "${field.field_label}" is required.` });
-          // }
-          // If not required or validation is handled client-side, just skip or add with fileRef: null
-          submissionFields.push({
-            field_id: field.field_id,
-            field_label: field.field_label,
-            type: field.type,
-            fileRef: null, // Or undefined, depending on schema default/behavior
-          });
-        }
-      } else {
-        // For non-file types, use the value from parsedFieldsData
-        submissionFields.push({
-          field_id: field.field_id,
-          field_label: field.field_label,
-          type: field.type,
-          value: field.value, // Use the value received in the JSON string
-        });
-        console.log(
-          `Processed value for field "${field.field_label}" (key: ${field.field_id}). Value: ${field.value}`
-        );
-      }
+    const schemaDefinition = await GovDocumentDefinitionModel.findById(schema_definition_id);
+    if (!schemaDefinition) {
+        return res.status(404).json({ message: `Schema definition with ID ${schema_definition_id} not found.` });
     }
 
-    // Create a new GovDocumentSubmission document instance
+    const submissionFields = [];
+    const uploadedFiles = req.files || {}; 
+
+    for (const submittedFieldData of parsedFieldsData) {
+      const definitionField = schemaDefinition.fields.find(f => f.key === submittedFieldData.field_id);
+      
+      if (!definitionField) {
+        console.warn(`Submitted field_id "${submittedFieldData.field_id}" not found in schema definition "${schemaDefinition.name}". Skipping.`);
+        continue; 
+      }
+
+      const currentField = {
+        field_id: definitionField.key, 
+        field_label: definitionField.label,
+        type: definitionField.type,
+      };
+
+      if (definitionField.type === "image" || definitionField.type === "document") {
+        const fileFromRequest = uploadedFiles[definitionField.key]; 
+
+        if (fileFromRequest) {
+          const newFile = new FileModel({
+            data: fileFromRequest.buffer,
+            contentType: fileFromRequest.mimetype,
+            filename: fileFromRequest.originalname,
+            size: fileFromRequest.size,
+            uploadedBy: user_id,
+            category: schemaDefinition.schema_id 
+          });
+          const savedFile = await newFile.save();
+          currentField.fileRef = savedFile._id; 
+          console.log(
+            `File saved for field "${definitionField.label}". File ID: ${savedFile._id}`
+          );
+
+        } else if (definitionField.required) {
+          return res.status(400).json({ message: `File for required field "${definitionField.label}" (key: ${definitionField.key}) is missing.` });
+        } else {
+          currentField.fileRef = null; 
+        }
+      } else {
+        currentField.value = submittedFieldData.value;
+        if (definitionField.required && (currentField.value === null || currentField.value === undefined || String(currentField.value).trim() === '')) {
+            return res.status(400).json({ message: `Value for required field "${definitionField.label}" (key: ${definitionField.key}) is missing.` });
+        }
+      }
+      submissionFields.push(currentField);
+    }
+
     const newSubmission = new GovDocumentSubmissionModel({
-      schema_id: schema_id, // Mongoose ObjectId
-      user_id: user_id, // Mongoose ObjectId (assuming valid ID provided)
-      created_by: created_by, // Mongoose ObjectId (assuming valid ID provided)
-      fields: submissionFields, // Array of processed submission field objects
+      schema_id: schema_definition_id, 
+      user_id: user_id, 
+      created_by: created_by, 
+      fields: submissionFields, 
     });
 
-    // Save the submission document to the database
-    const savedSubmission = await newSubmission.save();
+    const savedSubmission = await newSubmission.save(); 
 
-    console.log("Document Submission saved successfully:", savedSubmission);
-
-    // Send a success response
+    console.log("Document Submission saved successfully:", savedSubmission._id);
     res.status(201).json({
       message: "Document data submitted successfully!",
-      submission: savedSubmission, // Include the saved document in the response
+      submissionId: savedSubmission._id, 
     });
   } catch (error) {
     console.error("Error submitting document data:", error);
-
-    // Handle potential Mongoose validation errors for the submission model
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map((err) => err.message);
       return res
         .status(400)
         .json({ message: "Submission validation failed", errors: messages });
     }
-
-    // Handle errors related to file processing or database issues
     res.status(500).json({
       message: "An error occurred while submitting document data.",
       error: error.message,
@@ -358,5 +297,54 @@ export const submitDocumentData = async (req, res) => {
   }
 };
 
-// Add other controller functions here if needed
-// e.g., updateSchemaDefinition, deleteSchemaDefinition, getSubmissionsBySchema etc.
+export const checkDocumentUniqueness = async (req, res) => {
+  console.log("Received POST request for /api/document/check-unique");
+  const { schema_definition_id, identifiers_to_check } = req.body;
+
+  if (!schema_definition_id || !mongoose.Types.ObjectId.isValid(schema_definition_id)) {
+    return res.status(400).json({ message: "Valid schema_definition_id is required." });
+  }
+  if (!Array.isArray(identifiers_to_check) || identifiers_to_check.length === 0) {
+    return res.status(400).json({ message: "identifiers_to_check must be a non-empty array." });
+  }
+
+  try {
+    const foundKeys = [];
+    for (const identifier of identifiers_to_check) {
+      if (!identifier.key || !identifier.value || String(identifier.value).trim() === '') {
+        console.warn("Skipping invalid identifier in check:", identifier);
+        continue; 
+      }
+
+      const existingSubmission = await GovDocumentSubmissionModel.findOne({
+        schema_id: schema_definition_id, 
+        "submitted_unique_identifiers.key": identifier.key,
+        "submitted_unique_identifiers.value": String(identifier.value).trim(),
+      });
+
+      if (existingSubmission) {
+        foundKeys.push(existingSubmission);
+      }
+    }
+
+    if (foundKeys.length > 0) {
+      return res.status(200).json({
+        message: "One or more unique identifiers match existing submissions.",
+        matched_keys: foundKeys, 
+        exists: true
+      });
+    } else {
+      return res.status(200).json({
+        message: "No existing submissions found for the provided unique identifiers.",
+        matched_keys: [],
+        exists: false
+      });
+    }
+  } catch (error) {
+    console.error("Error checking document uniqueness:", error);
+    res.status(500).json({
+      message: "An error occurred while checking document uniqueness.",
+      error: error.message,
+    });
+  }
+};

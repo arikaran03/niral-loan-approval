@@ -1,3 +1,4 @@
+// src/components/admin/DynamicDocumentForm.js (or your actual path)
 import React, { useState, useEffect } from "react";
 import {
   Form,
@@ -6,11 +7,12 @@ import {
   Row,
   Col,
   Card,
-  InputGroup,
+  InputGroup, // Kept for potential future use, not directly used in this version
   Spinner,
   Alert,
 } from "react-bootstrap";
-import { axiosInstance } from "../../../config.js"; // Assuming axiosInstance is correctly configured
+import { FaPlusCircle, FaTrashAlt, FaInfoCircle, FaKey } from "react-icons/fa"; // Added FaKey
+import { axiosInstance } from "../../../config.js"; 
 
 // Define the possible field types based on your schema
 const FIELD_TYPES = [
@@ -44,14 +46,13 @@ const DynamicDocumentForm = () => {
   const [loading, setLoading] = useState(false);
 
   // State for submission status and message
-  const [submitStatus, setSubmitStatus] = useState("idle"); // 'idle', 'loading', 'success', 'error'
+  const [submitStatus, setSubmitStatus] = useState("idle"); 
   const [statusMessage, setStatusMessage] = useState("");
 
   // Handle changes for main schema details
   const handleSchemaDetailsChange = (e) => {
     const { name, value } = e.target;
     setSchemaDetails((prev) => ({ ...prev, [name]: value }));
-    // Clear error for this field on change
     setValidationErrors((prev) => {
       const newState = { ...prev };
       delete newState[name];
@@ -63,27 +64,30 @@ const DynamicDocumentForm = () => {
   const handleFieldChange = (index, e) => {
     const { name, value, type, checked } = e.target;
     const newFields = [...fields];
+    const fieldToUpdate = { ...newFields[index] };
 
-    // Handle checkbox input specifically
     if (type === "checkbox") {
-      newFields[index][name] = checked;
+      fieldToUpdate[name] = checked;
+      // If 'is_unique_identifier' is unchecked, clear 'unique_identifier_prompt'
+      if (name === "is_unique_identifier" && !checked) {
+        fieldToUpdate.unique_identifier_prompt = "";
+      }
     } else {
-      // Handle other input types
-      newFields[index][name] = value;
+      fieldToUpdate[name] = value;
     }
-
+    
+    newFields[index] = fieldToUpdate;
     setFields(newFields);
 
-    // Clear error for this specific field input on change
     setValidationErrors((prev) => {
       const newState = { ...prev };
       if (newState.fields && newState.fields[index]) {
         delete newState.fields[index][name];
-        // If no more errors for this field index, clean up the field index entry
+        if (name === "is_unique_identifier" && !checked) {
+            delete newState.fields[index].unique_identifier_prompt; // Clear prompt error too
+        }
         if (Object.keys(newState.fields[index]).length === 0) {
-          // Use delete operator to remove the property
           delete newState.fields[index];
-          // If no more errors in fields array, clean up the fields entry
           if (Object.keys(newState.fields).length === 0) {
             delete newState.fields;
           }
@@ -100,12 +104,14 @@ const DynamicDocumentForm = () => {
       {
         key: "",
         label: "",
-        prompt: "", // Added prompt field
-        type: "text", // Default type
+        prompt: "", 
+        type: "text", 
         required: false,
-        options: [], // Initialize options array
-        min_value: "", // Initialize min_value as empty string
-        max_value: "", // Initialize max_value as empty string
+        options: [], 
+        min_value: "", 
+        max_value: "", 
+        is_unique_identifier: false, // New field
+        unique_identifier_prompt: "", // New field
       },
     ]);
   };
@@ -113,39 +119,17 @@ const DynamicDocumentForm = () => {
   // Handle removing a field
   const handleRemoveField = (index) => {
     setFields((prev) => prev.filter((_, i) => i !== index));
-    // Also remove any validation errors associated with this field index
     setValidationErrors((prev) => {
       const newState = { ...prev };
-      if (newState.fields) {
-        // Filter out the error entry for the removed index
-        const newFieldErrors = newState.fields.filter((_, i) => i !== index);
-        // Mongoose validation errors are typically an object keyed by path, not an array
-        // Adjusting cleanup to match potential Mongoose error structure (though client validation structure is array-based here)
-        const cleanedFieldErrors = {};
-        newFieldErrors.forEach((err, newIndex) => {
-          // Assuming the original errors were fieldErrors[index] = { key: '...', ... }
-          // This part of error cleanup is complex with array index changes and might need re-thinking
-          // A simpler approach might be to just re-validate after removing a field, but that might be jarring.
-          // For now, we'll try filtering the array structure:
-          if (prev.fields && prev.fields[index]) {
-            // This is a simplified attempt to clean up the old index's errors
-            // A more robust solution might involve re-indexing errors or a different error state structure
-            // For this example, let's remove the error for the index that was removed
-            const errorsAfterRemoval = prev.fields.filter(
-              (_, i) => i !== index
-            );
-            // Note: This might not correctly align errors if indices shift significantly
-            // Keeping it simple for the demo
-            newState.fields = errorsAfterRemoval;
-            if (newState.fields.length === 0) {
-              delete newState.fields;
-            }
-          }
-        });
-        if (Object.keys(cleanedFieldErrors).length > 0) {
-          newState.fields = cleanedFieldErrors;
-        } else if (newState.fields && newState.fields.length === 0) {
-          delete newState.fields;
+      if (newState.fields && newState.fields.length > index) {
+        // Create a new array for field errors, removing the one at the specified index
+        const updatedFieldErrors = [...(newState.fields || [])];
+        updatedFieldErrors.splice(index, 1);
+        
+        if (updatedFieldErrors.length > 0) {
+            newState.fields = updatedFieldErrors;
+        } else {
+            delete newState.fields; // Remove fields error object if no field errors remain
         }
       }
       return newState;
@@ -155,13 +139,11 @@ const DynamicDocumentForm = () => {
   // Handle changes for options array (for select/multiselect)
   const handleOptionsChange = (index, e) => {
     const newFields = [...fields];
-    // Split the comma-separated string into an array, trim whitespace
     newFields[index].options = e.target.value
       .split(",")
       .map((option) => option.trim())
       .filter((option) => option !== "");
     setFields(newFields);
-    // Clear error for options on change
     setValidationErrors((prev) => {
       const newState = { ...prev };
       if (newState.fields && newState.fields[index]) {
@@ -181,13 +163,12 @@ const DynamicDocumentForm = () => {
   const validateForm = () => {
     const errors = {};
     let isValid = true;
+    let uniqueIdentifierFound = false;
 
-    // Validate main schema details
     if (!schemaDetails.schema_id.trim()) {
       errors.schema_id = "Schema ID is required.";
       isValid = false;
     }
-    // Basic format check for schema_id (e.g., no spaces, lowercase) - optional
     if (
       schemaDetails.schema_id.trim() &&
       !/^[a-z0-9_]+$/.test(schemaDetails.schema_id.trim())
@@ -205,111 +186,91 @@ const DynamicDocumentForm = () => {
       isValid = false;
     }
 
-    // Validate fields array
-    const fieldErrors = [];
-    fields.forEach((field, index) => {
+    const fieldErrors = fields.map((field, index) => { // Use map to keep indices aligned
       const currentFieldErrors = {};
-      if (!field.key.trim()) {
-        currentFieldErrors.key = "Key is required.";
-        isValid = false;
-      }
-      // Basic format check for field key - optional
+      if (!field.key.trim()) currentFieldErrors.key = "Key is required.";
       if (field.key.trim() && !/^[a-z0-9_]+$/.test(field.key.trim())) {
-        currentFieldErrors.key =
-          "Field key can only contain lowercase letters, numbers, and underscores.";
-        isValid = false;
+        currentFieldErrors.key = "Field key can only contain lowercase letters, numbers, and underscores.";
       }
-      if (!field.label.trim()) {
-        currentFieldErrors.label = "Label is required.";
-        isValid = false;
-      }
-      // Prompt is generally expected if a field exists
-      if (!field.prompt || !field.prompt.trim()) {
-        currentFieldErrors.prompt = "Prompt is required for the field.";
-        isValid = false;
-      }
-      // Type is required by schema, default is text, so this check might be redundant if default works
-      if (!field.type) {
-        currentFieldErrors.type = "Type is required.";
-        isValid = false;
+      if (!field.label.trim()) currentFieldErrors.label = "Label is required.";
+      if (!field.prompt || !field.prompt.trim()) currentFieldErrors.prompt = "Prompt is required.";
+      if (!field.type) currentFieldErrors.type = "Type is required.";
+
+      if ((field.type === "select" || field.type === "multiselect") && (!field.options || field.options.length === 0)) {
+        currentFieldErrors.options = "Options are required for select/multiselect types (comma-separated).";
       }
 
-      // Validate options for select/multiselect
-      if (
-        (field.type === "select" || field.type === "multiselect") &&
-        (!field.options || field.options.length === 0)
-      ) {
-        currentFieldErrors.options =
-          "Options are required for select/multiselect types (comma-separated).";
-        isValid = false;
+      const applicableTypesForMinMax = ["text", "textarea", "number", "date", "datetime", "time"];
+      if (applicableTypesForMinMax.includes(field.type)) {
+          if (field.min_value === undefined || field.min_value === null || String(field.min_value).trim() === '') {
+              currentFieldErrors.min_value = `Min value is required for type '${field.type}'.`;
+          }
+          if (field.max_value === undefined || field.max_value === null || String(field.max_value).trim() === '') {
+              currentFieldErrors.max_value = `Max value is required for type '${field.type}'.`;
+          }
       }
-
-      // --- MODIFIED VALIDATION FOR min_value/max_value ---
-      // min_value and max_value are required strings only if type is NOT image or document
-      const isImageOrDocument =
-        field.type === "image" || field.type === "document";
-
-      if (!isImageOrDocument && field.min_value === "") {
-        currentFieldErrors.min_value = "Min value is required.";
-        isValid = false;
-      }
-      if (!isImageOrDocument && field.max_value === "") {
-        currentFieldErrors.max_value = "Max value is required.";
-        isValid = false;
-      }
-      // --- END MODIFIED VALIDATION ---
-
-      // Optional: Add more specific validation based on field.type and min/max values
-      // This part remains the same, but will only apply if min_value/max_value are provided (not empty)
-      if (
-        field.type === "number" &&
-        field.min_value !== "" && // Only validate format/range if values are not empty
-        field.max_value !== ""
-      ) {
+      
+      if (field.type === "number" && field.min_value !== "" && field.max_value !== "") {
         const minNum = parseFloat(field.min_value);
         const maxNum = parseFloat(field.max_value);
         if (isNaN(minNum) || isNaN(maxNum)) {
-          // Consider adding format validation even if not strictly required by backend schema
           // currentFieldErrors.min_value = currentFieldErrors.max_value = 'Must be valid numbers.';
-          // isValid = false;
         } else if (minNum > maxNum) {
-          currentFieldErrors.min_value =
-            "Min value cannot be greater than max value.";
-          isValid = false;
+          currentFieldErrors.min_value = "Min value cannot be greater than max value.";
         }
       }
-      // Add date validation if needed
 
-      if (Object.keys(currentFieldErrors).length > 0) {
-        fieldErrors[index] = currentFieldErrors; // Store errors at the field's index
+      // Validations for unique identifier fields
+      if (field.is_unique_identifier === true) {
+        uniqueIdentifierFound = true; // Mark that at least one unique identifier is defined
+        if (field.type !== "text") {
+          currentFieldErrors.is_unique_identifier = "Unique identifier field must be of type 'text'.";
+        }
+        if (field.required !== true) {
+          currentFieldErrors.is_unique_identifier = "Unique identifier field must also be marked as 'Required'.";
+        }
+        if (!field.unique_identifier_prompt || String(field.unique_identifier_prompt).trim() === "") {
+          currentFieldErrors.unique_identifier_prompt = "Unique Identifier Prompt is required when 'Is Unique Identifier' is checked.";
+        }
       }
+      
+      if (Object.keys(currentFieldErrors).length > 0) isValid = false;
+      return currentFieldErrors;
     });
 
-    // Filter out empty error objects before assigning
-    const filteredFieldErrors = fieldErrors.filter(
-      (err) => Object.keys(err).length > 0
-    );
-    if (filteredFieldErrors.length > 0) {
-      errors.fields = filteredFieldErrors; // Assign filtered errors
-      isValid = false; // Form is invalid if there are any field errors
-    } else {
-      // If no field errors, ensure the fields key is not present or is empty
-      if (errors.fields) delete errors.fields;
+    if (!uniqueIdentifierFound && fields.length > 0) { // Only enforce if fields are defined
+        errors.form = "At least one field must be marked as a unique identifier.";
+        isValid = false;
+    }
+    
+    // Check if any field has errors before assigning to errors.fields
+    const hasFieldSpecificErrors = fieldErrors.some(err => Object.keys(err).length > 0);
+    if (hasFieldSpecificErrors) {
+        errors.fields = fieldErrors;
     }
 
+
     setValidationErrors(errors);
-    // Return true only if there are no errors at all
-    return Object.keys(errors).length === 0;
+    return isValid;
   };
 
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setValidationErrors({}); // Clear previous errors
+    setSubmitStatus("idle");
+    setStatusMessage("");
 
     if (!validateForm()) {
       console.log("Form validation failed. Showing errors.");
       setSubmitStatus("error");
       setStatusMessage("Please fix the errors in the form before submitting.");
+      // Scroll to the first error
+      const firstErrorKey = Object.keys(validationErrors)[0];
+      if (firstErrorKey) {
+          const element = document.getElementById(firstErrorKey) || document.getElementsByName(firstErrorKey)[0];
+          element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       return;
     }
 
@@ -317,7 +278,6 @@ const DynamicDocumentForm = () => {
     setSubmitStatus("loading");
     setStatusMessage("Creating schema definition...");
 
-    // Prepare data for submission - matches your GovDocumentSchemaDefinition schema
     const submissionData = {
       schema_id: schemaDetails.schema_id.trim(),
       name: schemaDetails.name.trim(),
@@ -325,488 +285,293 @@ const DynamicDocumentForm = () => {
       fields: fields.map((field) => ({
         key: field.key.trim(),
         label: field.label.trim(),
-        prompt: field.prompt.trim(), // Include prompt field
+        prompt: field.prompt.trim(),
         type: field.type,
         required: field.required,
-        options:
-          field.options && field.options.length > 0 ? field.options : undefined, // Send options only if present and not empty
-        // Send min_value/max_value as empty string if type is image/document,
-        // or trimmed value otherwise.
-        min_value:
-          field.type === "image" || field.type === "document"
-            ? ""
-            : field.min_value.trim(),
-        max_value:
-          field.type === "image" || field.type === "document"
-            ? ""
-            : field.max_value.trim(),
+        options: field.options && field.options.length > 0 ? field.options : undefined,
+        min_value: String(field.min_value).trim(), // Ensure it's a string
+        max_value: String(field.max_value).trim(), // Ensure it's a string
+        is_unique_identifier: field.is_unique_identifier || false,
+        unique_identifier_prompt: field.is_unique_identifier ? String(field.unique_identifier_prompt || '').trim() : undefined,
       })),
     };
 
     try {
-      // Make the API call using the axios instance
       const response = await axiosInstance.post(
         "/api/document/schema-definition",
         submissionData
-      ); // POST to /api/document/schema-definition
+      ); 
 
-      if (response.status >= 200 && response.status < 300) {
-        // Check for success status codes
-        setSubmitStatus("success");
-        setStatusMessage("Schema definition created successfully!");
-        // Optionally reset the form after success
-        setSchemaDetails({ schema_id: "", name: "", description: "" });
-        setFields([]);
-        setValidationErrors({}); // Clear errors
-      } else {
-        // Handle non-2xx status codes
-        setSubmitStatus("error");
-        setStatusMessage(
-          `Submission failed: ${
-            response.data.message || `Server error (Status: ${response.status})`
-          }`
-        );
-        console.error("Submission error:", response);
-      }
+      setSubmitStatus("success");
+      setStatusMessage("Schema definition created successfully!");
+      setSchemaDetails({ schema_id: "", name: "", description: "" });
+      setFields([]);
+      setValidationErrors({}); 
     } catch (error) {
-      // Handle network errors, request errors, etc.
       setSubmitStatus("error");
-      // Check if it's an axios error with a response
       if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
         setStatusMessage(
           `An error occurred: ${error.response.data.message || error.message}`
         );
-        console.error("Submission error response:", error.response.data);
-        console.error("Submission error status:", error.response.status);
-        console.error("Submission error headers:", error.response.headers);
+        if (error.response.data.errors) { // Handle structured validation errors from backend
+            const backendErrors = {};
+            error.response.data.errors.forEach(err => {
+                // This needs to map backend error paths to frontend state structure
+                // Example: if backend returns error for "fields[0].key"
+                // For simplicity, just showing the first error for now
+                if (!backendErrors.form) backendErrors.form = err;
+            });
+            setValidationErrors(prev => ({...prev, ...backendErrors}));
+        }
       } else if (error.request) {
-        // The request was made but no response was received
-        setStatusMessage(
-          `An error occurred: No response received from server.`
-        );
-        console.error("Submission error request:", error.request);
+        setStatusMessage(`An error occurred: No response received from server.`);
       } else {
-        // Something happened in setting up the request that triggered an Error
         setStatusMessage(`An error occurred: ${error.message}`);
-        console.error("Submission error message:", error.message);
       }
-      console.error("Submission config:", error.config);
     } finally {
-      setLoading(false); // End loading state
+      setLoading(false); 
     }
   };
 
-  // Helper function to determine the HTML input type for min/max values
-  // This function returns 'number' for number fields, 'date' for date fields,
-  // and 'text' for all other field types, leveraging browser native inputs.
   const getMinMaxValueInputType = (fieldType) => {
     switch (fieldType) {
-      case "number":
-        return "number";
-      case "date":
-        return "date";
-      case "datetime": // Assuming datetime might use min/max
-        return "datetime-local";
-      case "time": // Assuming time might use min/max
-        return "time";
-      default:
-        // For image/document/text/textarea/select/multiselect, min/max might represent size or length.
-        // Keeping as text input is flexible.
-        return "text";
+      case "number": return "number";
+      case "date": return "date";
+      case "datetime": return "datetime-local";
+      case "time": return "time";
+      default: return "text";
     }
   };
 
   return (
-    <Container className="my-4">
-      <h2 className="mb-4">Define New Government Document Schema</h2>
+    <Container className="my-4 dynamic-document-form">
+      <Card className="shadow-sm">
+        <Card.Header as="h3" className="bg-primary text-white">
+            <FaPlusCircle className="me-2"/> Define New Document Schema
+        </Card.Header>
+        <Card.Body>
+            {submitStatus !== "idle" && submitStatus !== "loading" && (
+                <Alert
+                variant={submitStatus === "success" ? "success" : "danger"}
+                onClose={() => setSubmitStatus("idle")} 
+                dismissible 
+                className="mb-3"
+                >
+                {statusMessage}
+                </Alert>
+            )}
 
-      {/* Submission status messages (Alerts) */}
-      {submitStatus !== "idle" && submitStatus !== "loading" && (
-        <Alert
-          variant={submitStatus === "success" ? "success" : "danger"}
-          onClose={() => setSubmitStatus("idle")} // Allow dismissing the alert
-          dismissible // Add close button
-          className="mb-3"
-        >
-          {statusMessage}
-        </Alert>
-      )}
-
-      <Form onSubmit={handleSubmit} noValidate>
-        {" "}
-        {/* noValidate to rely on JS validation */}
-        {/* --- Main Schema Details --- */}
-        <Card className="mb-4">
-          <Card.Header>Document Type Details</Card.Header>
-          <Card.Body>
-            <Row>
-              <Col md={4}>
-                <Form.Group className="mb-3" controlId="schemaId">
-                  <Form.Label>
-                    Schema ID <span className="text-danger">*</span>
-                  </Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="schema_id"
-                    value={schemaDetails.schema_id}
-                    onChange={handleSchemaDetailsChange}
-                    isInvalid={!!validationErrors.schema_id}
-                  />
-                  <Form.Control.Feedback type="invalid">
-                    {validationErrors.schema_id}
-                  </Form.Control.Feedback>
-                </Form.Group>
-              </Col>
-              <Col md={8}>
-                <Form.Group className="mb-3" controlId="schemaName">
-                  <Form.Label>
-                    Document Name <span className="text-danger">*</span>
-                  </Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="name"
-                    value={schemaDetails.name}
-                    onChange={handleSchemaDetailsChange}
-                    isInvalid={!!validationErrors.name}
-                  />
-                  <Form.Control.Feedback type="invalid">
-                    {validationErrors.name}
-                  </Form.Control.Feedback>
-                </Form.Group>
-              </Col>
-            </Row>
-            <Form.Group className="mb-3" controlId="schemaDescription">
-              <Form.Label>
-                Description <span className="text-danger">*</span>
-              </Form.Label>
-              <Form.Control
-                as="textarea"
-                name="description"
-                value={schemaDetails.description}
-                onChange={handleSchemaDetailsChange}
-                isInvalid={!!validationErrors.description}
-                rows={3}
-              />
-              <Form.Control.Feedback type="invalid">
-                {validationErrors.description}
-              </Form.Control.Feedback>
-            </Form.Group>
-          </Card.Body>
-        </Card>
-        {/* --- Fields Definition --- */}
-        <Card className="mb-4">
-          <Card.Header>Document Fields</Card.Header>
-          <Card.Body>
-            {fields.map((field, index) => {
-              // Determine if min/max should be treated as required for UI/Validation
-              const isMinMaxRequired =
-                field.type !== "image" && field.type !== "document";
-
-              return (
-                <Card key={index} className="mb-3 p-3 border">
-                  <Row className="align-items-center">
-                    <Col md={5}>
-                      <Form.Group
-                        className="mb-3"
-                        controlId={`fieldKey_${index}`}
-                      >
-                        <Form.Label>
-                          Field Key <span className="text-danger">*</span>
-                        </Form.Label>
-                        <Form.Control
-                          type="text"
-                          name="key"
-                          value={field.key}
-                          onChange={(e) => handleFieldChange(index, e)}
-                          isInvalid={
-                            !!(
-                              validationErrors.fields &&
-                              validationErrors.fields[index] &&
-                              validationErrors.fields[index].key
-                            )
-                          }
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {validationErrors.fields &&
-                            validationErrors.fields[index] &&
-                            validationErrors.fields[index].key}
-                        </Form.Control.Feedback>
-                      </Form.Group>
-                    </Col>
-                    <Col md={6}>
-                      <Form.Group
-                        className="mb-3"
-                        controlId={`fieldLabel_${index}`}
-                      >
-                        <Form.Label>
-                          Field Label <span className="text-danger">*</span>
-                        </Form.Label>
-                        <Form.Control
-                          type="text"
-                          name="label"
-                          value={field.label}
-                          onChange={(e) => handleFieldChange(index, e)}
-                          isInvalid={
-                            !!(
-                              validationErrors.fields &&
-                              validationErrors.fields[index] &&
-                              validationErrors.fields[index].label
-                            )
-                          }
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {validationErrors.fields &&
-                            validationErrors.fields[index] &&
-                            validationErrors.fields[index].label}
-                        </Form.Control.Feedback>
-                      </Form.Group>
-                    </Col>
-                    <Col md={1} className="d-flex justify-content-end">
-                      {/* Remove Field Button */}
-                      <Button
-                        variant="outline-danger"
-                        onClick={() => handleRemoveField(index)}
-                        size="sm"
-                        aria-label={`Remove field ${field.label || index + 1}`}
-                      >
-                        &times; {/* Simple 'x' icon */}
-                      </Button>
-                    </Col>
-                  </Row>
-
-                  <Row>
-                    <Col md={12}>
-                      {" "}
-                      {/* Prompt field takes full width */}
-                      <Form.Group
-                        className="mb-3"
-                        controlId={`fieldPrompt_${index}`}
-                      >
-                        <Form.Label>
-                          Prompt <span className="text-danger">*</span>{" "}
-                          {/* Assuming prompt is required */}
-                        </Form.Label>
-                        <Form.Control
-                          type="text"
-                          name="prompt"
-                          value={field.prompt}
-                          onChange={(e) => handleFieldChange(index, e)}
-                          isInvalid={
-                            !!(
-                              validationErrors.fields &&
-                              validationErrors.fields[index] &&
-                              validationErrors.fields[index].prompt
-                            )
-                          }
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {validationErrors.fields &&
-                            validationErrors.fields[index] &&
-                            validationErrors.fields[index].prompt}
-                        </Form.Control.Feedback>
-                      </Form.Group>
-                    </Col>
-                  </Row>
-
-                  <Row>
+            <Form onSubmit={handleSubmit} noValidate> 
+                <Card className="mb-4">
+                <Card.Header>
+                    <FaInfoCircle className="me-2"/> Document Type Details
+                </Card.Header>
+                <Card.Body>
+                    <Row>
                     <Col md={4}>
-                      <Form.Group
-                        className="mb-3"
-                        controlId={`fieldType_${index}`}
-                      >
+                        <Form.Group className="mb-3" controlId="schema_id"> {/* Changed ID */}
                         <Form.Label>
-                          Type <span className="text-danger">*</span>
+                            Schema ID <span className="text-danger">*</span>
                         </Form.Label>
-                        <Form.Select
-                          name="type"
-                          value={field.type}
-                          onChange={(e) => handleFieldChange(index, e)}
-                          isInvalid={
-                            !!(
-                              validationErrors.fields &&
-                              validationErrors.fields[index] &&
-                              validationErrors.fields[index].type
-                            )
-                          }
-                        >
-                          {FIELD_TYPES.map((type) => (
-                            <option key={type} value={type}>
-                              {type}
-                            </option>
-                          ))}
-                        </Form.Select>
-                        <Form.Control.Feedback type="invalid">
-                          {validationErrors.fields &&
-                            validationErrors.fields[index] &&
-                            validationErrors.fields[index].type}
-                        </Form.Control.Feedback>
-                      </Form.Group>
-                    </Col>
-                    <Col md={4}>
-                      <Form.Group
-                        className="mb-3"
-                        controlId={`fieldRequired_${index}`}
-                      >
-                        <Form.Check
-                          type="checkbox"
-                          label="Required"
-                          name="required"
-                          checked={field.required}
-                          onChange={(e) => handleFieldChange(index, e)}
-                          // isInvalid prop is less common for checkboxes
+                        <Form.Control
+                            type="text"
+                            name="schema_id"
+                            value={schemaDetails.schema_id}
+                            onChange={handleSchemaDetailsChange}
+                            isInvalid={!!validationErrors.schema_id}
+                            placeholder="e.g., aadhaar_card, pan_card"
                         />
-                      </Form.Group>
+                        <Form.Control.Feedback type="invalid">
+                            {validationErrors.schema_id}
+                        </Form.Control.Feedback>
+                        </Form.Group>
                     </Col>
-                  </Row>
-
-                  {/* Conditional Options Input for Select/Multiselect */}
-                  {(field.type === "select" ||
-                    field.type === "multiselect") && (
-                    <Form.Group
-                      className="mb-3"
-                      controlId={`fieldOptions_${index}`}
-                    >
-                      <Form.Label>
-                        Options (comma-separated){" "}
-                        <span className="text-danger">*</span>
-                      </Form.Label>
-                      <Form.Control
-                        type="text"
-                        value={field.options.join(", ")} // Display options as comma-separated string
-                        onChange={(e) => handleOptionsChange(index, e)} // Special handler for options
-                        isInvalid={
-                          !!(
-                            validationErrors.fields &&
-                            validationErrors.fields[index] &&
-                            validationErrors.fields[index].options
-                          )
-                        }
-                        placeholder="Option 1, Option 2, Option 3"
-                      />
-                      <Form.Control.Feedback type="invalid">
-                        {validationErrors.fields &&
-                          validationErrors.fields[index] &&
-                          validationErrors.fields[index].options}
-                      </Form.Control.Feedback>
+                    <Col md={8}>
+                        <Form.Group className="mb-3" controlId="name"> {/* Changed ID */}
+                        <Form.Label>
+                            Document Name <span className="text-danger">*</span>
+                        </Form.Label>
+                        <Form.Control
+                            type="text"
+                            name="name"
+                            value={schemaDetails.name}
+                            onChange={handleSchemaDetailsChange}
+                            isInvalid={!!validationErrors.name}
+                            placeholder="e.g., Aadhaar Card, PAN Card"
+                        />
+                        <Form.Control.Feedback type="invalid">
+                            {validationErrors.name}
+                        </Form.Control.Feedback>
+                        </Form.Group>
+                    </Col>
+                    </Row>
+                    <Form.Group className="mb-3" controlId="description"> {/* Changed ID */}
+                    <Form.Label>
+                        Description <span className="text-danger">*</span>
+                    </Form.Label>
+                    <Form.Control
+                        as="textarea"
+                        name="description"
+                        value={schemaDetails.description}
+                        onChange={handleSchemaDetailsChange}
+                        isInvalid={!!validationErrors.description}
+                        rows={2}
+                        placeholder="Brief description of the document type"
+                    />
+                    <Form.Control.Feedback type="invalid">
+                        {validationErrors.description}
+                    </Form.Control.Feedback>
                     </Form.Group>
-                  )}
-
-                  {/* min_value and max_value inputs - Dynamically change type and required indicator */}
-                  <Row>
-                    <Col md={6}>
-                      <Form.Group
-                        className="mb-3"
-                        controlId={`fieldMinValue_${index}`}
-                      >
-                        <Form.Label>
-                          Min Value{" "}
-                          {isMinMaxRequired && (
-                            <span className="text-danger">*</span>
-                          )}
-                          {/* <--- Conditional Required */}
-                        </Form.Label>
-                        <Form.Control
-                          // Dynamically set the input type based on the field's selected type
-                          type={getMinMaxValueInputType(field.type)}
-                          name="min_value"
-                          value={field.min_value}
-                          onChange={(e) => handleFieldChange(index, e)}
-                          isInvalid={
-                            !!(
-                              validationErrors.fields &&
-                              validationErrors.fields[index] &&
-                              validationErrors.fields[index].min_value
-                            )
-                          }
-                          // Add step="any" for number inputs to allow decimals
-                          step={field.type === "number" ? "any" : undefined}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {validationErrors.fields &&
-                            validationErrors.fields[index] &&
-                            validationErrors.fields[index].min_value}
-                        </Form.Control.Feedback>
-                      </Form.Group>
-                    </Col>
-                    <Col md={6}>
-                      <Form.Group
-                        className="mb-3"
-                        controlId={`fieldMaxValue_${index}`}
-                      >
-                        <Form.Label>
-                          Max Value{" "}
-                          {isMinMaxRequired && (
-                            <span className="text-danger">*</span>
-                          )}
-                          {/* <--- Conditional Required */}
-                        </Form.Label>
-                        <Form.Control
-                          // Dynamically set the input type based on the field's selected type
-                          type={getMinMaxValueInputType(field.type)}
-                          name="max_value"
-                          value={field.max_value}
-                          onChange={(e) => handleFieldChange(index, e)}
-                          isInvalid={
-                            !!(
-                              validationErrors.fields &&
-                              validationErrors.fields[index] &&
-                              validationErrors.fields[index].max_value
-                            )
-                          }
-                          // Add step="any" for number inputs to allow decimals
-                          step={field.type === "number" ? "any" : undefined}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {validationErrors.fields &&
-                            validationErrors.fields[index] &&
-                            validationErrors.fields[index].max_value}
-                        </Form.Control.Feedback>
-                      </Form.Group>
-                    </Col>
-                  </Row>
+                </Card.Body>
                 </Card>
-              );
-            })}
+                
+                <Card className="mb-4">
+                <Card.Header>Document Fields</Card.Header>
+                <Card.Body>
+                    {fields.map((field, index) => {
+                    const isMinMaxApplicable = ["text", "textarea", "number", "date", "datetime", "time"].includes(field.type);
+                    const fieldErrorObject = validationErrors.fields && validationErrors.fields[index] ? validationErrors.fields[index] : {};
 
-            {/* Button to add a new field */}
-            <Button variant="secondary" onClick={handleAddField}>
-              Add Field
-            </Button>
-          </Card.Body>
-        </Card>
-        {/* Submission button */}
-        <Button
-          variant="primary"
-          type="submit"
-          disabled={loading}
-          className="mt-3"
-        >
-          {loading ? (
-            <>
-              <Spinner
-                as="span"
-                animation="border"
-                size="sm"
-                role="status"
-                aria-hidden="true"
-                className="me-2"
-              />
-              Creating Schema...
-            </>
-          ) : (
-            "Create Schema Definition"
-          )}
-        </Button>
-      </Form>
+                    return (
+                        <Card key={index} className="mb-3 p-3 border field-definition-item">
+                        <Row className="align-items-start">
+                            <Col>
+                                <h5 className="mb-3">Field #{index + 1}</h5>
+                            </Col>
+                            <Col xs="auto">
+                            <Button
+                                variant="outline-danger"
+                                onClick={() => handleRemoveField(index)}
+                                size="sm"
+                                className="float-end"
+                                aria-label={`Remove field ${field.label || index + 1}`}
+                            >
+                                <FaTrashAlt/> Remove
+                            </Button>
+                            </Col>
+                        </Row>
+                        <Row>
+                            <Col md={6}>
+                            <Form.Group className="mb-3" controlId={`fieldKey_${index}`}>
+                                <Form.Label>Field Key <span className="text-danger">*</span></Form.Label>
+                                <Form.Control type="text" name="key" value={field.key}
+                                onChange={(e) => handleFieldChange(index, e)}
+                                isInvalid={!!fieldErrorObject.key} placeholder="e.g., aadhaar_number"/>
+                                <Form.Control.Feedback type="invalid">{fieldErrorObject.key}</Form.Control.Feedback>
+                            </Form.Group>
+                            </Col>
+                            <Col md={6}>
+                            <Form.Group className="mb-3" controlId={`fieldLabel_${index}`}>
+                                <Form.Label>Field Label <span className="text-danger">*</span></Form.Label>
+                                <Form.Control type="text" name="label" value={field.label}
+                                onChange={(e) => handleFieldChange(index, e)}
+                                isInvalid={!!fieldErrorObject.label} placeholder="e.g., Aadhaar Number"/>
+                                <Form.Control.Feedback type="invalid">{fieldErrorObject.label}</Form.Control.Feedback>
+                            </Form.Group>
+                            </Col>
+                        </Row>
+                        <Form.Group className="mb-3" controlId={`fieldPrompt_${index}`}>
+                            <Form.Label>Prompt <span className="text-danger">*</span></Form.Label>
+                            <Form.Control type="text" name="prompt" value={field.prompt}
+                            onChange={(e) => handleFieldChange(index, e)}
+                            isInvalid={!!fieldErrorObject.prompt} placeholder="e.g., Enter your 12-digit Aadhaar number"/>
+                            <Form.Control.Feedback type="invalid">{fieldErrorObject.prompt}</Form.Control.Feedback>
+                        </Form.Group>
+                        <Row>
+                            <Col md={4}>
+                            <Form.Group className="mb-3" controlId={`fieldType_${index}`}>
+                                <Form.Label>Type <span className="text-danger">*</span></Form.Label>
+                                <Form.Select name="type" value={field.type} onChange={(e) => handleFieldChange(index, e)}
+                                isInvalid={!!fieldErrorObject.type}>
+                                {FIELD_TYPES.map((type) => (<option key={type} value={type}>{type}</option>))}
+                                </Form.Select>
+                                <Form.Control.Feedback type="invalid">{fieldErrorObject.type}</Form.Control.Feedback>
+                            </Form.Group>
+                            </Col>
+                            <Col md={4} className="d-flex align-items-center pt-3"> {/* Adjusted for alignment */}
+                                <Form.Group controlId={`fieldRequired_${index}`} className="mb-3">
+                                    <Form.Check type="switch" label="Required" name="required"
+                                    checked={field.required} onChange={(e) => handleFieldChange(index, e)}/>
+                                </Form.Group>
+                            </Col>
+                             <Col md={4} className="d-flex align-items-center pt-3">
+                                <Form.Group controlId={`fieldIsUniqueIdentifier_${index}`} className="mb-3">
+                                    <Form.Check type="switch" label={<><FaKey className="me-1"/> Is Unique Identifier?</>} name="is_unique_identifier"
+                                    checked={field.is_unique_identifier} onChange={(e) => handleFieldChange(index, e)}
+                                    isInvalid={!!fieldErrorObject.is_unique_identifier}
+                                    title="Mark if this field can uniquely identify the document (e.g., Aadhaar No.). Must be a 'text' type and 'Required'."/>
+                                     <Form.Control.Feedback type="invalid">{fieldErrorObject.is_unique_identifier}</Form.Control.Feedback>
+                                </Form.Group>
+                            </Col>
+                        </Row>
+
+                        {field.is_unique_identifier && (
+                            <Form.Group className="mb-3" controlId={`fieldUniqueIdentifierPrompt_${index}`}>
+                                <Form.Label>Unique Identifier Prompt <span className="text-danger">*</span></Form.Label>
+                                <Form.Control type="text" name="unique_identifier_prompt" value={field.unique_identifier_prompt}
+                                onChange={(e) => handleFieldChange(index, e)}
+                                isInvalid={!!fieldErrorObject.unique_identifier_prompt}
+                                placeholder="e.g., Enter 12-digit number without spaces"/>
+                                <Form.Control.Feedback type="invalid">{fieldErrorObject.unique_identifier_prompt}</Form.Control.Feedback>
+                            </Form.Group>
+                        )}
+
+                        {(field.type === "select" || field.type === "multiselect") && (
+                            <Form.Group className="mb-3" controlId={`fieldOptions_${index}`}>
+                            <Form.Label>Options (comma-separated) <span className="text-danger">*</span></Form.Label>
+                            <Form.Control type="text" value={Array.isArray(field.options) ? field.options.join(", ") : ""}
+                                onChange={(e) => handleOptionsChange(index, e)}
+                                isInvalid={!!fieldErrorObject.options}
+                                placeholder="Option 1, Option 2, Option 3"/>
+                            <Form.Control.Feedback type="invalid">{fieldErrorObject.options}</Form.Control.Feedback>
+                            </Form.Group>
+                        )}
+
+                        {isMinMaxApplicable && (
+                            <Row>
+                                <Col md={6}>
+                                <Form.Group className="mb-3" controlId={`fieldMinValue_${index}`}>
+                                    <Form.Label>Min Value/Length <span className="text-danger">*</span></Form.Label>
+                                    <Form.Control type={getMinMaxValueInputType(field.type)} name="min_value" value={field.min_value}
+                                    onChange={(e) => handleFieldChange(index, e)}
+                                    isInvalid={!!fieldErrorObject.min_value}
+                                    step={field.type === "number" ? "any" : undefined}/>
+                                    <Form.Control.Feedback type="invalid">{fieldErrorObject.min_value}</Form.Control.Feedback>
+                                </Form.Group>
+                                </Col>
+                                <Col md={6}>
+                                <Form.Group className="mb-3" controlId={`fieldMaxValue_${index}`}>
+                                    <Form.Label>Max Value/Length <span className="text-danger">*</span></Form.Label>
+                                    <Form.Control type={getMinMaxValueInputType(field.type)} name="max_value" value={field.max_value}
+                                    onChange={(e) => handleFieldChange(index, e)}
+                                    isInvalid={!!fieldErrorObject.max_value}
+                                    step={field.type === "number" ? "any" : undefined}/>
+                                    <Form.Control.Feedback type="invalid">{fieldErrorObject.max_value}</Form.Control.Feedback>
+                                </Form.Group>
+                                </Col>
+                            </Row>
+                        )}
+                        </Card>
+                    );
+                    })}
+
+                    <Button variant="outline-primary" onClick={handleAddField} className="mt-2">
+                    <FaPlusCircle className="me-2"/>Add Another Field
+                    </Button>
+                    {validationErrors.form && <Alert variant="danger" className="mt-3">{validationErrors.form}</Alert>}
+                </Card.Body>
+                </Card>
+                
+                <Button variant="success" type="submit" disabled={loading} className="mt-3 w-100 py-2 fs-5">
+                {loading ? (
+                    <><Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-2"/>Creating Schema...</>
+                ) : ( "Create Schema Definition" )}
+                </Button>
+            </Form>
+        </Card.Body>
+      </Card>
     </Container>
   );
-};
-
-// PropTypes (optional but good practice)
-DynamicDocumentForm.propTypes = {
-  // No props needed for this component as it's for creating a new definition
 };
 
 export default DynamicDocumentForm;
