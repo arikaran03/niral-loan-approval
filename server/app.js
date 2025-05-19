@@ -24,6 +24,7 @@ import {
   adminRepaymentRoutes,
 } from "./routes/loanRepayment.routes.js";
 import govSchemaRoutes from "./routes/schema.routes.js";
+import { sendOtp, verifyOtp } from "./functions/communicate.js";
 
 mongodbConnect();
 
@@ -128,6 +129,55 @@ app.use("/api/repayments", applicantRepaymentRoutes); // For applicant-facing en
 app.use("/api/admin/repayments", adminRepaymentRoutes); // For admin-facing endpoints
 
 app.use("/api/document", govSchemaRoutes);
+
+app.post("/api/otp/send", async (req, res) => { // Added async and res
+  try {
+    // The sendOtp function from otp_functions_nodejs expects req.body to have:
+    // - mobileNumber: The phone number to send OTP to.
+    // - message: The message template string with "{OTP}" placeholder.
+    // It will be called as sendOtp(req)
+
+    const result = await sendOtp(req); // Pass the entire req object
+
+    // Send back the requestId to the client, as it's needed for verification
+    res.status(200).json({
+      message: `OTP sent successfully to ${req.body.mobileNumber}`, // Or result.message
+      requestId: result.requestId // Crucial for the client to use in the verify step
+    });
+  } catch (error) {
+    console.error("Error sending OTP from route:", error.message);
+    // Determine status code based on error type
+    let statusCode = 500; // Default to internal server error
+    if (error.message.includes("required") || error.message.includes("placeholder") || error.message.includes("API Key not configured")) {
+        statusCode = 400; // Bad request from client or server misconfiguration perceived as bad input
+    } else if (error.message.startsWith("Failed to send OTP:")) {
+        statusCode = 502; // Bad Gateway - if the external API (Fast2SMS) failed
+    }
+    res.status(statusCode).json({ error: error.message || "Failed to send OTP" });
+  }
+});
+
+app.post("/api/otp/verify", async (req, res) => { // Added async and res
+  try {
+    // The verifyOtp function from otp_functions_nodejs expects req.body to have:
+    // - requestId: The unique ID received from the /api/otp/send response.
+    // - otp: The OTP entered by the user.
+    // It will be called as verifyOtp(req)
+
+    await verifyOtp(req); // Pass the entire req object
+
+    res.status(200).json({ verified: true, message: "OTP verified successfully" });
+  } catch (error) {
+    console.error("Error verifying OTP from route:", error.message);
+    let statusCode = 400; // Default for client-side errors (invalid OTP, expired, max attempts, bad requestId)
+    if (error.message.includes("service failed") || error.message.includes("unexpected error")) {
+        statusCode = 500; // Internal server error
+    } else if (error.message.includes("Invalid Request ID") || error.message.includes("Maximum verification attempts") || error.message.includes("OTP has expired") || error.message.includes("Invalid OTP")) {
+        statusCode = 400; // Specific client errors
+    }
+    res.status(statusCode).json({ verified: false, error: error.message || "Failed to verify OTP" });
+  }
+});
 
 // Global error handler (catches both express-jwt errors and any thrown below)
 app.use(errorHandler);
