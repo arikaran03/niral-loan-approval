@@ -34,7 +34,7 @@ const ScheduledInstallmentSchema = new mongoose.Schema({
         'Partially Paid', // Partially paid
         'Overdue',        // Past due date + grace period, still unpaid/partially paid
         'Paid Late',      // Fully paid but after the due date + grace period
-        'Waived',         // Entire installment waived
+        'Waived',         // Entire installment waived (could be due to a larger waiver event)
         'Skipped',        // Payment skipped (e.g., due to moratorium)
         'Cancelled'       // If an installment is cancelled due to loan restructuring/foreclosure
     ],
@@ -64,15 +64,13 @@ const PaymentTransactionSchema = new mongoose.Schema({
 
   payment_method: {
     type: String,
-    enum: ['Bank Transfer', 'UPI', 'Card', 'Cash', 'Cheque', 'Auto-Debit', 'Internal Adjustment', 'Other'],
+    enum: ['Bank Transfer', 'UPI', 'Card', 'Cash', 'Cheque', 'Auto-Debit', 'Internal Adjustment', 'Waiver Adjustment', 'Other'], // Added Waiver Adjustment
     required: true,
     comment: "Method used for the payment."
   },
-  payment_mode_details: { // Store specific details based on payment_method
+  payment_mode_details: { 
     type: mongoose.Schema.Types.Mixed,
-    comment: "Details specific to the payment method (e.g., card_last_four, cheque_number, upi_ref_id)."
-    // Example: { "cheque_number": "12345", "bank_name": "ABC Bank", "branch": "XYZ" }
-    // Example: { "card_last_four": "1234", "card_type": "Visa" }
+    comment: "Details specific to the payment method (e.g., card_last_four, cheque_number, upi_ref_id, waiver_submission_id for Waiver Adjustment)."
   },
   reference_id:     { type: String, index: true, comment: "External reference ID for the transaction (e.g., bank transaction ID, payment gateway ID)." },
   status: {
@@ -88,7 +86,7 @@ const PaymentTransactionSchema = new mongoose.Schema({
   notes:            { type: String, comment: "Notes related to this specific payment transaction." },
   processed_by:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', comment: "User ID of the admin/system that recorded/processed this payment." },
   created_by_type:  { type: String, enum: ['User', 'System'], default: 'User', comment: "Indicates if the transaction was created manually or by an automated system." }
-}, { timestamps: true, versionKey: false }); // _id: true is default, timestamps for transaction creation/update
+}, { timestamps: true, versionKey: false });
 
 
 /**
@@ -97,7 +95,7 @@ const PaymentTransactionSchema = new mongoose.Schema({
 const RestructureHistorySchema = new mongoose.Schema({
     restructure_date:   { type: Date, default: Date.now, required: true },
     reason:             { type: String, required: true },
-    previous_terms:     { type: mongoose.Schema.Types.Mixed, comment: "Snapshot of key terms before restructuring." }, // e.g., { emi, tenure, interest_rate }
+    previous_terms:     { type: mongoose.Schema.Types.Mixed, comment: "Snapshot of key terms before restructuring." }, 
     new_terms:          { type: mongoose.Schema.Types.Mixed, required: true, comment: "Snapshot of key terms after restructuring." },
     effective_from_installment: { type: Number, comment: "Installment number from which new terms apply." },
     notes:              { type: String },
@@ -110,12 +108,45 @@ const RestructureHistorySchema = new mongoose.Schema({
 const CommunicationLogSchema = new mongoose.Schema({
     log_date:   { type: Date, default: Date.now, required: true },
     type:       { type: String, enum: ['SMS', 'Email', 'Call', 'Letter', 'System Alert'], required: true },
-    subject:    { type: String }, // e.g., "Payment Reminder", "Overdue Notice"
+    subject:    { type: String }, 
     summary:    { type: String, required: true },
     recipient:  { type: String, comment: "e.g., masked phone number or email address" },
-    sent_by:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // User or system if automated
+    sent_by:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, 
     status:     { type: String, enum: ['Sent', 'Delivered', 'Failed', 'Read'] }
 }, { _id: false, timestamps: true, versionKey: false });
+
+/**
+ * @description NEW: Schema to store information about an applied waiver.
+ */
+const AppliedWaiverInfoSchema = new mongoose.Schema({
+  waiver_submission_id: { // The specific waiver application that was approved
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'WaiverSubmission', // Ensure you have a 'WaiverSubmission' model
+    required: true,
+    comment: "Reference to the approved waiver submission that resulted in this waiver."
+  },
+  waiver_scheme_id: { // The scheme under which the waiver was granted (snapshot or direct ref)
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'WaiverScheme', // Ensure you have a 'WaiverScheme' model
+    required: true,
+    comment: "Reference to the waiver scheme definition."
+  },
+  date_applied: { // Date this waiver's effects were recorded/processed on the loan repayment
+    type: Date,
+    default: Date.now,
+    required: true,
+    comment: "Date the waiver was officially applied to this loan repayment record."
+  },
+  waiver_details_summary: { // A brief summary of what was waived
+    type: String,
+    comment: "e.g., '10% interest waiver on overdue interest as of YYYY-MM-DD due to COVID-19 relief scheme.'"
+  },
+  waived_components: [{ // Could detail which components were affected by this waiver event, if not granularly in installments
+    component_type: { type: String, enum: ['principal', 'interest', 'penalty'], required: true },
+    amount_waived_by_this_event: { type: Number, required: true, min: 0 } // Amount waived specifically by this waiver event
+  }],
+  notes: { type: String, comment: "Specific notes related to the application of this waiver." }
+}, { _id: false, versionKey: false });
 
 
 // --- Main Loan Repayment Schema ---
@@ -130,7 +161,7 @@ const LoanRepaymentSchema = new mongoose.Schema({
   },
   loan_id: { 
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Loan',
+    ref: 'Loan', // Reference to the Loan model from artifact LoanModel_with_WaiverFK_JS
     required: true,
     comment: "Reference to the original Loan product definition."
   },
@@ -148,15 +179,12 @@ const LoanRepaymentSchema = new mongoose.Schema({
   original_tenure_months: { type: Number, required: true, min: 1, comment: "Original loan tenure in months." },
   initial_calculated_emi: { type: Number, required: true, min: 0, comment: "The EMI amount calculated at the start of the loan." },
   processing_fee_paid: { type: Number, default: 0, comment: "Processing fee amount collected from the borrower." },
-  repayment_type: { // Though current Loan schema implies EMI
+  repayment_type: { 
     type: String, 
     enum: ['EMI', 'Bullet', 'Interest-Only then Bullet', 'Custom'], 
     default: 'EMI', 
     comment: "Type of repayment structure."
   },
-  // interest_calculation_method: { type: String, enum: ['Reducing Balance', 'Flat Rate'], default: 'Reducing Balance' },
-  // compounding_frequency: { type: String, enum: ['Daily', 'Monthly', 'Quarterly', 'Annually'], default: 'Monthly' },
-
 
   // --- Repayment Schedule & Dates ---
   repayment_start_date: { type: Date, required: true, comment: "Date of the first EMI payment." },
@@ -211,14 +239,12 @@ const LoanRepaymentSchema = new mongoose.Schema({
     comment: "Overall status of the loan repayment."
   },
 
-  // --- Penalty Configuration (Snapshot from Loan product or custom for this loan) ---
+  // --- Penalty Configuration ---
   penalty_configuration: {
     applies_to_missed_full_emi: { type: Boolean, default: true },
     late_payment_fee_type: { type: String, enum: ['None', 'FixedAmount', 'PercentageOfOverdueEMI', 'PercentageOfOverduePrincipal'] },
     late_payment_fee_value: { type: Number, min: 0 },
     late_payment_grace_period_days: { type: Number, default: 0, min: 0 },
-    // penalty_interest_rate_pa: { type: Number, min: 0, comment: "Penal interest rate on overdue amount, if applicable." },
-    // penalty_compounding: { type: Boolean, default: false }
   },
 
   // --- Prepayment/Foreclosure Configuration & Details ---
@@ -246,11 +272,19 @@ const LoanRepaymentSchema = new mongoose.Schema({
   is_written_off: { type: Boolean, default: false },
   write_off_details: {
     date: { type: Date },
-    amount: { type: Number }, // Amount written off
+    amount: { type: Number }, 
     reason: { type: String },
     approved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
   },
   
+  // --- NEW: Information about any waiver applied to this loan repayment ---
+  applied_waiver_info: {
+    type: AppliedWaiverInfoSchema, // Using the new subdocument schema
+    default: null, // Null if no waiver has been applied
+    required: false,
+    comment: "Details of the waiver scheme application that was approved and applied to this loan."
+  },
+
   // --- Communication & Notes ---
   communication_log: { type: [CommunicationLogSchema], default: [] },
   internal_notes: [{
@@ -260,155 +294,48 @@ const LoanRepaymentSchema = new mongoose.Schema({
   }],
 
 }, {
-  timestamps: true, // For created_at, updated_at of the LoanRepayment record itself
-  versionKey: false // Disable __v field
+  timestamps: true, 
+  versionKey: false 
 });
 
 // --- Indexes ---
 LoanRepaymentSchema.index({ user_id: 1, loan_repayment_status: 1 });
 LoanRepaymentSchema.index({ next_due_date: 1, loan_repayment_status: 1 });
 LoanRepaymentSchema.index({ days_past_due: 1, loan_repayment_status: 1 });
+LoanRepaymentSchema.index({ 'applied_waiver_info.waiver_submission_id': 1 }, { sparse: true }); // Index if querying by applied waiver
 
 
-// --- METHODS (Conceptual - Full implementation is complex and application-specific) ---
-
-/**
- * @description Generates the initial amortization schedule for the loan.
- * This should be called once upon creation of the LoanRepayment record.
- * Requires sophisticated financial logic for EMI calculation and principal/interest breakdown.
- * Factors to consider: principal, annual interest rate, tenure, repayment start date,
- * possibly different for first/last EMI, rounding rules.
- */
+// --- METHODS (Placeholders - Full implementation is complex) ---
 LoanRepaymentSchema.methods.generateAmortizationSchedule = async function() {
-  // Placeholder for actual amortization logic.
-  // 1. Get P (this.disbursed_amount), R (this.agreed_interest_rate_pa / 12 / 100), N (this.original_tenure_months).
-  // 2. Calculate EMI (this.initial_calculated_emi should ideally be calculated here or passed in if pre-calculated).
-  //    Formula: EMI = P * R * (1+R)^N / ((1+R)^N - 1)
-  // 3. Loop N times to create each installment:
-  //    - Calculate interest_component = current_outstanding_principal * R
-  //    - Calculate principal_component = EMI - interest_component
-  //    - Update current_outstanding_principal -= principal_component
-  //    - Determine due_date for each installment based on this.repayment_start_date.
-  //    - Push to this.scheduled_installments.
-  // 4. Set initial outstanding_principal, next_due_date, next_emi_amount.
-  
-  // Example:
-  // this.current_outstanding_principal = this.disbursed_amount;
-  // if (this.scheduled_installments.length > 0) {
-  //   this.next_due_date = this.scheduled_installments[0].due_date;
-  //   this.next_emi_amount = this.scheduled_installments[0].total_emi_due;
-  // }
-  // await this.save(); // If called outside a pre-save hook
   console.warn("LoanRepaymentSchema.methods.generateAmortizationSchedule: Needs full implementation.");
 };
-
-/**
- * @description Processes a new payment transaction.
- * Allocates payment amounts to installments (penalties, interest, principal in order).
- * Updates installment statuses and overall loan aggregates and status.
- */
 LoanRepaymentSchema.methods.processPayment = async function(paymentTransactionId) {
-  // Placeholder for payment processing logic.
-  // 1. Find the paymentTransaction from this.payment_transactions by ID.
-  // 2. If transaction status is not 'Cleared' or 'Pending Confirmation' (depending on flow), handle appropriately.
-  // 3. Iterate through this.scheduled_installments (oldest overdue/pending first).
-  // 4. Allocate payment components (penalty_component, interest_component, principal_component) from transaction
-  //    to installment's penalty_due, interest_due, principal_due.
-  // 5. Update installment's paid amounts and status ('Paid', 'Partially Paid', 'Paid Late').
-  // 6. Update overall aggregates: total_principal_repaid, total_interest_repaid, total_penalties_paid,
-  //    current_outstanding_principal.
-  // 7. Update last_payment_date, last_payment_amount.
-  // 8. Call updateLoanRepaymentOverallStatus() to refresh overall loan status, DPD, overdue amounts.
-  // await this.save();
   console.warn("LoanRepaymentSchema.methods.processPayment: Needs full implementation for transaction ID:", paymentTransactionId);
 };
-
-/**
- * @description Applies late fees to overdue installments based on penalty_configuration.
- * This might be called by a daily batch job or when a payment is processed.
- */
 LoanRepaymentSchema.methods.applyLateFees = async function() {
-  // Placeholder for late fee application logic.
-  // 1. Iterate through overdue this.scheduled_installments.
-  // 2. Check grace period (this.penalty_configuration.late_payment_grace_period_days).
-  // 3. If overdue beyond grace and penalty not yet applied:
-  //    - Calculate penalty amount based on this.penalty_configuration.
-  //    - Add to installment.penalty_due.
-  //    - Update installment.is_penalty_applied = true.
-  //    - Update total_penalties_levied and current_overdue_penalties.
-  // await this.save();
   console.warn("LoanRepaymentSchema.methods.applyLateFees: Needs full implementation.");
 };
-
-/**
- * @description Handles a prepayment (part or full/foreclosure).
- * Recalculates schedule or closes loan based on prepayment type.
- */
 LoanRepaymentSchema.methods.handlePrepayment = async function(prepaymentAmount, prepaymentDate, isForeclosure = false) {
-  // Placeholder for prepayment logic.
-  // 1. Check if prepayment is allowed (this.prepayment_configuration.allow_prepayment, lock_in_period_months).
-  // 2. Calculate prepayment fee if any.
-  // 3. Reduce current_outstanding_principal.
-  // 4. If isForeclosure:
-  //    - Mark loan as 'Foreclosed', set actual_closure_date.
-  //    - Update foreclosure_details.
-  //    - Cancel/update remaining scheduled_installments.
-  // 5. If part prepayment:
-  //    - Option 1: Reduce EMI, tenure remains same.
-  //    - Option 2: Reduce tenure, EMI remains same. (This requires regenerating/adjusting future installments).
-  //    - Update aggregates.
-  // await this.save();
   console.warn("LoanRepaymentSchema.methods.handlePrepayment: Needs full implementation for amount:", prepaymentAmount, "on", prepaymentDate);
 };
-
-/**
- * @description Recalculates and updates overall loan status fields like DPD, overdue amounts, next due date, and loan_repayment_status.
- * Should be called after any event affecting loan balance or installment status (payment, fee application, etc.).
- */
 LoanRepaymentSchema.methods.updateLoanRepaymentOverallStatus = async function() {
-  // Placeholder for status update logic.
-  // 1. Calculate total_current_overdue_amount, current_overdue_principal, current_overdue_interest, current_overdue_penalties
-  //    by summing up unpaid portions of overdue installments.
-  // 2. Determine days_past_due (DPD) based on the oldest overdue installment's due_date.
-  // 3. Count consecutive_missed_payments.
-  // 4. Find next_due_date and next_emi_amount from pending installments.
-  // 5. Update this.loan_repayment_status based on conditions:
-  //    - If current_outstanding_principal <= 0 (considering small tolerance), status = 'Fully Repaid'.
-  //    - If DPD > threshold, status = 'Defaulted' (based on business rules).
-  //    - If DPD > 0, status = 'Active - Overdue'.
-  //    - Else, status = 'Active'.
-  //    - (Handle 'Foreclosed', 'Write-Off', 'Restructured' separately where those events occur).
-  // await this.save();
   console.warn("LoanRepaymentSchema.methods.updateLoanRepaymentOverallStatus: Needs full implementation.");
 };
 
-
 // --- MIDDLEWARE ---
 LoanRepaymentSchema.pre('save', async function(next) {
-  // Ensure current_outstanding_principal is never negative.
   if (this.current_outstanding_principal < 0) {
     this.current_outstanding_principal = 0;
   }
-
-  // If it's a new LoanRepayment record and schedule is empty, attempt to generate it.
-  // This assumes disbursed_amount, rate, tenure etc., are set before first save.
   if (this.isNew && this.scheduled_installments.length === 0 && this.disbursed_amount > 0) {
-    // await this.generateAmortizationSchedule(); // Better to call this explicitly after creation in service layer
-                                               // to handle potential errors and ensure all data is present.
-    // For now, just initialize outstanding principal
     this.current_outstanding_principal = this.disbursed_amount;
   }
-  
-  // Update total_current_overdue_amount
   this.total_current_overdue_amount = (this.current_overdue_principal || 0) + 
                                       (this.current_overdue_interest || 0) + 
                                       (this.current_overdue_penalties || 0);
-
-  // Set actual_closure_date if loan is fully repaid or foreclosed and date is not set
   if ((this.loan_repayment_status === 'Fully Repaid' || this.loan_repayment_status === 'Foreclosed') && !this.actual_closure_date) {
     this.actual_closure_date = new Date();
   }
-  
   next();
 });
 

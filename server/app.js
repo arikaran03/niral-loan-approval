@@ -25,6 +25,7 @@ import {
 } from "./routes/loanRepayment.routes.js";
 import govSchemaRoutes from "./routes/schema.routes.js";
 import { sendOtp, verifyOtp } from "./functions/communicate.js";
+import waiverSchemeRoutes from "./routes/waiverScheme.routes.js";
 
 mongodbConnect();
 
@@ -178,6 +179,8 @@ app.post("/api/otp/verify", async (req, res) => { // Added async and res
     res.status(statusCode).json({ verified: false, error: error.message || "Failed to verify OTP" });
   }
 });
+
+app.use('/api/waiver-schemes', waiverSchemeRoutes);
 
 // Global error handler (catches both express-jwt errors and any thrown below)
 app.use(errorHandler);

@@ -33,13 +33,12 @@ const loanSchema = new mongoose.Schema({
   title:       { type: String, required: true },
   description: { type: String, required: true },  // rich HTML allowed
   
-
   // --- Status ---
   status: {
     type: String,
-    enum: ['draft', 'published'], // Define possible statuses
-    default: 'draft',            // Default to draft
-    index: true                  // Index for faster status filtering
+    enum: ['draft', 'published', 'archived'], // Added 'archived' for consistency
+    default: 'draft',
+    index: true
   },
 
   // --- Financial Details ---
@@ -66,6 +65,14 @@ const loanSchema = new mongoose.Schema({
   // --- Optional Scheduling ---
   disbursement_date: { type: Date }, // Planned date for disbursing funds
 
+  // --- NEW: Link to an applicable Waiver Scheme ---
+  applicable_waiver_scheme_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'WaiverScheme', // This should match the model name you used for WaiverScheme
+    default: null,       // Default to null, meaning no specific waiver scheme is linked initially
+    required: false      // This link is optional
+  },
+
   // --- Audit Timestamps ---
   created_at:  { type: Date, default: Date.now },
   updated_at:  { type: Date, default: Date.now }
@@ -73,13 +80,11 @@ const loanSchema = new mongoose.Schema({
 
 // --- Indexes ---
 loanSchema.index({ application_start: 1, application_end: 1 });
+loanSchema.index({ applicable_waiver_scheme_id: 1 }); // Index the new field if you query by it often
 // loanSchema.index({ 'fields.field_id': 1 }); // Optional
 
 // --- Middleware & Validation ---
 loanSchema.pre('save', function(next) {
-    // Don't run full validation logic on drafts? Or maybe just basic checks?
-    // For now, keeping validation, but you might adjust based on draft requirements.
-
     // Validate amount consistency
     if (this.isModified('min_amount') || this.isModified('max_amount')) {
         if (this.max_amount < this.min_amount) {
@@ -98,8 +103,8 @@ loanSchema.pre('save', function(next) {
         }
     }
 
-  // Ensure status is valid if being set (though enum should handle this)
-   if (this.isModified('status') && !['draft', 'published'].includes(this.status)) {
+  // Ensure status is valid if being set
+   if (this.isModified('status') && !['draft', 'published', 'archived'].includes(this.status)) {
         return next(new Error(`Invalid status value: ${this.status}`));
     }
 

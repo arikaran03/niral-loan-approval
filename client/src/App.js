@@ -16,6 +16,9 @@ import ApplicationFullDetails from "./components/applicant/applications/Applicat
 import DynamicDocumentForm from "./components/admin/schema/DynamicDocumentForm";
 import DynamicDocumentSubmissionForm from "./components/admin/schema/DynamicDocumentSubmissionForm";
 
+import WaiverBuilderContainer from "./components/admin/waivering/WaiveringBuilderContainer";
+import WaiverApplicationForm from "./components/applicant/waivering/WaiverApplicationForm";
+
 // Import the new repayment components
 import MyLoanRepaymentsPage from "./components/applicant/repayments/MyLoanRepaymentsPage";
 import LoanRepaymentDetailPage from "./components/applicant/repayments/LoanRepaymentDetailPage";
@@ -34,6 +37,8 @@ function App() {
           <Route path="applications/:id" element={<SubmissionDetails />} />
           <Route path="loans" element={<LoanListPage />} />
           <Route path="form-builder" element={<FormBuilderContainer />} />
+          <Route path="waiver-builder" element={<WaiverBuilderContainer />} />
+          <Route path="waiver-builder/:waiverId" element={<WaiverBuilderContainer />} />
           <Route
             path="form-builder/:loanId"
             element={<FormBuilderContainer />}
@@ -69,6 +74,9 @@ function App() {
             element={<LoanRepaymentDetailPage />}
           />
         </Route>
+        <Route path="/waiver-apply/:waiverSchemeId" element={<WaiverApplicationForm />} />
+
+        {/* Public Routes */}
 
         <Route path="/profile" element={<PrivateRoute />}>
           <Route path="" element={<Profile />} />

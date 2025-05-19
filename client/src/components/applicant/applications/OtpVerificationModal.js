@@ -7,10 +7,11 @@ import { axiosInstance } from '../../../config'; // Assuming axiosInstance is co
 
 const OtpVerificationModal = ({ show, handleClose, mobileNumber, loanTitle, onSubmitOtp, loanId }) => {
     const [otp, setOtp] = useState('');
+    const [currentRequestId, setCurrentRequestId] = useState(null); // To store the requestId from the backend
     const [isSendingOtp, setIsSendingOtp] = useState(false);
     const [otpSentSuccessfully, setOtpSentSuccessfully] = useState(false);
     const [sendError, setSendError] = useState('');
-    const [verifyError, setVerifyError] = useState('');
+    const [verifyError, setVerifyError] = useState(''); // This will be set by the parent ApplicationForm
     const [resendTimer, setResendTimer] = useState(0);
     const timerRef = useRef(null);
 
@@ -45,41 +46,46 @@ const OtpVerificationModal = ({ show, handleClose, mobileNumber, loanTitle, onSu
         }
         setIsSendingOtp(true);
         setSendError('');
-        setVerifyError(''); // Clear previous verification errors
-        if (!isResend) setOtpSentSuccessfully(false); // Reset sent status only if it's not a resend
+        setVerifyError(''); // Clear previous local verification errors if any
+        if (!isResend) {
+            setOtpSentSuccessfully(false);
+            setCurrentRequestId(null); // Reset request ID on a new send attempt
+        }
 
         try {
-            // Construct the message for the OTP.
-            // IMPORTANT: The backend should generate and manage the actual OTP.
-            // This message is a template that the backend might use.
-            let message = `Your One-Time Password for your loan application`;
-            if (loanTitle) {
-                message += ` for "${loanTitle}"`;
-            }
-            message += ` is {OTP}. This OTP is valid for 5 minutes. Please do not share it with anyone.`;
-
+            // The backend now generates the message, so we only send mobileNumber.
+            // The loanTitle and loanId might still be useful if your backend
+            // uses them for logging or context, but not for the message itself.
             const payload = {
                 mobileNumber: mobileNumber,
-                message: message, // The backend should replace {OTP}
-                // loanId: loanId, // Optional: Include loanId if your backend OTP service requires it for context
+                // loanId: loanId, // Optional: if backend uses it for context
+                // loanTitle: loanTitle // Optional: for logging or context
             };
 
             console.log("Sending OTP request with payload:", payload);
-            // Replace '/api/otp/send' with your actual backend endpoint for sending OTP
-            // This endpoint should handle OTP generation and sending via SMS gateway.
-            await axiosInstance.post('/api/otp/send', payload);
+            const response = await axiosInstance.post('/api/otp/send', payload);
 
-            setOtpSentSuccessfully(true);
-            startResendTimer(); // Start timer for resend option
+            if (response.data && response.data.requestId) {
+                setCurrentRequestId(response.data.requestId); // Store the requestId
+                setOtpSentSuccessfully(true);
+                startResendTimer();
+                console.log("OTP Sent. Request ID:", response.data.requestId);
+            } else {
+                // This case should ideally be handled by the error block if API doesn't return requestId on success
+                console.error("OTP send response missing requestId:", response.data);
+                setSendError(response.data.message || "Failed to initialize OTP process. Request ID missing.");
+                setOtpSentSuccessfully(false);
+            }
         } catch (error) {
             console.error("Error sending OTP:", error);
             const errMsg = error.response?.data?.error || error.response?.data?.message || "Failed to send OTP. Please try again.";
             setSendError(errMsg);
             setOtpSentSuccessfully(false);
+            setCurrentRequestId(null);
         } finally {
             setIsSendingOtp(false);
         }
-    }, [mobileNumber, loanTitle, loanId, startResendTimer]); // Added loanId to dependencies
+    }, [mobileNumber, startResendTimer, loanId, loanTitle]); // Dependencies for sendOtpRequest
 
     // Effect to automatically send OTP when the modal becomes visible and conditions are met
     useEffect(() => {
@@ -95,22 +101,30 @@ const OtpVerificationModal = ({ show, handleClose, mobileNumber, loanTitle, onSu
     // Handles the submission of the entered OTP
     const handleSubmitOtp = (e) => {
         e.preventDefault();
-        setVerifyError('');
-        if (!otp || !/^\d{4,6}$/.test(otp)) { // Basic validation for 4-6 digit OTP
-            setVerifyError("Please enter a valid OTP (4-6 digits).");
+        setVerifyError(''); // Clear local error message
+        if (!otp || !/^\d{4,6}$/.test(otp)) {
+            setVerifyError("Please enter a valid OTP (4-6 digits)."); // Local validation
             return;
         }
-        onSubmitOtp(otp); // Pass the entered OTP to the parent component
+        if (!currentRequestId) {
+            setVerifyError("Cannot verify OTP. Session ID is missing. Please try sending OTP again.");
+            return;
+        }
+        // Pass currentRequestId and otp to the parent (ApplicationForm) for actual verification
+        onSubmitOtp(currentRequestId, otp);
     };
 
     // Handles closing the modal and resetting its internal state
     const handleModalCloseInternal = () => {
         setOtp('');
-        // Don't reset otpSentSuccessfully here if you want the "OTP sent to..." message to persist
-        // until a new attempt or successful verification.
+        // Do not reset otpSentSuccessfully or currentRequestId here if you want the "OTP sent to..." message
+        // and the ability to verify to persist if the user reopens the modal without a new send.
+        // However, if closing means cancelling the current OTP flow, then reset them:
         // setOtpSentSuccessfully(false);
+        // setCurrentRequestId(null);
+
         setSendError('');
-        setVerifyError('');
+        setVerifyError(''); // Clear local verify error on close
         clearTimer();
         setResendTimer(0);
         handleClose(); // Call parent's close handler
@@ -120,9 +134,16 @@ const OtpVerificationModal = ({ show, handleClose, mobileNumber, loanTitle, onSu
     const handleResendOtp = () => {
         if (resendTimer === 0 && !isSendingOtp && mobileNumber) {
             setOtp(''); // Clear previous OTP input
-            sendOtpRequest(true); // true indicates it's a resend action
+            sendOtpRequest(true); // true indicates it's a resend action, will get a new requestId
         }
     }
+
+    // Propagate verification error from parent (ApplicationForm)
+    // This useEffect is if onSubmitOtp in parent sets an error that needs to be displayed here.
+    // For this component, verifyError state is mainly for its own input validation.
+    // The actual API verification error will be handled in ApplicationForm.js
+    // and displayed there. If you want to show parent's verify error here,
+    // you'd need to pass it as a prop. For now, this `verifyError` is local.
 
     return (
         <Modal show={show} onHide={handleModalCloseInternal} centered backdrop="static" keyboard={false}>
@@ -135,13 +156,14 @@ const OtpVerificationModal = ({ show, handleClose, mobileNumber, loanTitle, onSu
             <Modal.Body>
                 {/* Display error if OTP sending failed */}
                 {sendError && <Alert variant="danger" className="text-center small py-2">{sendError}</Alert>}
-                {/* Display error if OTP verification failed */}
+                {/* Display error if local OTP input validation failed */}
                 {verifyError && <Alert variant="danger" className="text-center small py-2">{verifyError}</Alert>}
 
                 {/* Message indicating OTP has been sent */}
                 {otpSentSuccessfully && !sendError && (
                     <Alert variant="success" className="text-center small py-2">
                         An OTP has been sent to your mobile number: <strong>{mobileNumber}</strong>.
+                        {currentRequestId && <small className="d-block text-muted">Ref ID: {currentRequestId.substring(0,8)}...</small>}
                     </Alert>
                 )}
                 {/* Loading spinner while sending OTP */}
@@ -163,16 +185,16 @@ const OtpVerificationModal = ({ show, handleClose, mobileNumber, loanTitle, onSu
                         <Form.Label>Enter OTP</Form.Label>
                         <InputGroup>
                             <Form.Control
-                                type="text" // Using text to allow better control over input format
+                                type="text"
                                 placeholder="Enter 4-6 digit OTP"
                                 value={otp}
-                                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} // Allow only digits, max 6
+                                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                 maxLength={6}
-                                disabled={!otpSentSuccessfully || isSendingOtp || !mobileNumber} // Disable if OTP not sent or currently sending
+                                disabled={!otpSentSuccessfully || isSendingOtp || !mobileNumber || !currentRequestId}
                                 required
-                                autoFocus // Focus on this field when modal opens
+                                autoFocus
                                 className="text-center fs-5"
-                                style={{ letterSpacing: '0.5em' }} // Adds spacing between digits
+                                style={{ letterSpacing: '0.5em' }}
                             />
                         </InputGroup>
                     </Form.Group>
@@ -181,7 +203,7 @@ const OtpVerificationModal = ({ show, handleClose, mobileNumber, loanTitle, onSu
                         <Button
                             variant="link"
                             onClick={handleResendOtp}
-                            disabled={resendTimer > 0 || isSendingOtp || !mobileNumber || !otpSentSuccessfully} // Disable if timer active, sending, no number, or initial send failed
+                            disabled={resendTimer > 0 || isSendingOtp || !mobileNumber} // Removed !otpSentSuccessfully as resend should be possible if initial send failed but number is present
                             size="sm"
                             className="p-0 text-decoration-none"
                         >
@@ -194,7 +216,7 @@ const OtpVerificationModal = ({ show, handleClose, mobileNumber, loanTitle, onSu
                         <Button 
                             variant="primary" 
                             type="submit" 
-                            disabled={isSendingOtp || !otpSentSuccessfully || !otp || !mobileNumber || otp.length < 4} // Disable if OTP not fully entered or conditions not met
+                            disabled={isSendingOtp || !otpSentSuccessfully || !otp || !mobileNumber || otp.length < 4 || !currentRequestId}
                         >
                             Verify & Proceed
                         </Button>
@@ -208,10 +230,10 @@ const OtpVerificationModal = ({ show, handleClose, mobileNumber, loanTitle, onSu
 OtpVerificationModal.propTypes = {
     show: PropTypes.bool.isRequired,
     handleClose: PropTypes.func.isRequired,
-    mobileNumber: PropTypes.string, // Mobile number to send OTP to
-    loanTitle: PropTypes.string,    // Optional: For context in the OTP message
-    onSubmitOtp: PropTypes.func.isRequired, // Callback when user submits OTP
-    loanId: PropTypes.string        // Optional: If backend needs loanId for OTP context
+    mobileNumber: PropTypes.string,
+    loanTitle: PropTypes.string,    // Kept for potential logging, not for message construction
+    onSubmitOtp: PropTypes.func.isRequired, // Now expects (requestId, otp)
+    loanId: PropTypes.string        // Kept for potential logging
 };
 
 export default OtpVerificationModal;

@@ -86,6 +86,8 @@ const FormBuilderContainer = () => {
         // ... (handleSaveLoanDraft logic remains the same) ...
         console.log('Container: handleSaveLoanDraft called.');
         setViewState(prev => ({ ...prev, isSaving: true, error: null, message: 'Saving draft...' }));
+
+        console.log('Form Data:', formData);
         const url = loanId ? `/api/loans/${loanId}` : '/api/loans'; const method = loanId ? 'patch' : 'post';
         const dataPayload = { ...formData, status: 'draft' };
         console.log(`API Call: ${method.toUpperCase()} ${url}`);
