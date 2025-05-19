@@ -1,829 +1,1227 @@
-// --- ApplicationForm.js (Main Component) ---
-// src/components/applicant/applications/ApplicationForm.js
+// src/components/application/ApplicationForm.js
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Container, Alert, Form, Spinner, Button } from 'react-bootstrap';
-import { axiosInstance } from '../../../config'; // UNCOMMENTED: Assuming this path is correct
-import { FaExclamationTriangle, FaCheckCircle } from 'react-icons/fa'; 
+import PropTypes from 'prop-types';
+import {
+  Container, Card, Form, Button, Spinner, Row, Col, Alert, ListGroup, Badge, InputGroup
+} from 'react-bootstrap';
+import { axiosInstance } from '../../../config';
+import {
+    FaInfoCircle, FaDollarSign, FaPercentage, FaCalendarAlt, FaClock, FaCheckCircle,
+    FaExclamationTriangle, FaSave, FaCloudUploadAlt, FaTrash, FaPlus, FaEdit, FaListOl, FaFileMedicalAlt,
+    FaRegSave, FaUser, FaHashtag, FaFileSignature, FaFileUpload, FaTimes, FaHourglassStart, FaQuestionCircle,
+    FaShieldAlt, FaAddressCard, FaIdBadge, FaDownload, FaPaperclip 
+} from 'react-icons/fa';
+import { ArrowLeft, FileText, XCircle, Check, AlertCircle, Lock, FileWarning, Hourglass, UserCheck, CalendarDays, BarChart3, Landmark } from 'lucide-react'; 
+import { format, parseISO, isValid } from 'date-fns';
+import "./ApplicationForm.css";
+import FaceVerificationApp from '../verification/FaceVerificationApp';
 
-// Assuming child components are in the same directory or adjust paths
-import LoanInfoHeader from './LoanInfoHeader';
-import KycDocumentSection from './KycDocumentSection';
-import LoanDetailsSection from './LoanDetailsSection';
-import OtherDocumentsSection from './OtherDocumentsSection';
-import ActionButtons from './ActionButtons';
+// Assuming FieldRenderer is in a separate file and imported:
+import FieldRenderer from './FieldRenderer'; 
+import OtpVerificationModal from './OtpVerificationModal';
 
-// Assuming constants.js is at src/constants.js
-import { AADHAAR_SCHEMA_ID_CONST, PAN_SCHEMA_ID_CONST } from '../../../constants'; // UNCOMMENTED: Assuming this path is correct
+// Define field labels eligible for annexure if mismatched
+const ANNEXURE_ELIGIBLE_FIELD_LABELS = [
+    "Full Name", "Applicant Name", "Name", 
+    "Address", "Permanent Address", "Current Address", "Street Address", 
+    "Father Name", "Spouses Name" 
+];
 
-
+// --- Main Application Form Component ---
 export default function ApplicationForm() {
     const { loanId } = useParams();
     const navigate = useNavigate();
 
-    // State for schemas
+    // State
     const [loanSchemaData, setLoanSchemaData] = useState(null);
-    const [aadhaarSchemaDef, setAadhaarSchemaDef] = useState(null);
-    const [panSchemaDef, setPanSchemaDef] = useState(null);
-
-    // State for form data sections
-    const [mainFormData, setMainFormData] = useState({});
-    const [aadhaarFormData, setAadhaarFormData] = useState({});
-    const [panFormData, setPanFormData] = useState({});
-
-    // State for files
+    const [formData, setFormData] = useState({});
+    const [requiredDocFiles, setRequiredDocFiles] = useState({});
     const [customFieldFiles, setCustomFieldFiles] = useState({});
-    const [otherRequiredDocFiles, setOtherRequiredDocFiles] = useState({});
-    const [aadhaarFieldFiles, setAadhaarFieldFiles] = useState({});
-    const [panFieldFiles, setPanFieldFiles] = useState({});
-    
     const [existingFileRefs, setExistingFileRefs] = useState({});
-
-    // State for UI and submission flow
     const [formErrors, setFormErrors] = useState({});
     const [loading, setLoading] = useState(true);
     const [isSavingDraft, setIsSavingDraft] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [draftSaveStatus, setDraftSaveStatus] = useState({ saved: false, time: null });
     const [submissionStatus, setSubmissionStatus] = useState('filling');
     const [apiError, setApiError] = useState("");
     const [autoFillError, setAutoFillError] = useState("");
-    const [finalLoanSubmissionId, setFinalLoanSubmissionId] = useState(null);
-    const [draftSaveStatus, setDraftSaveStatus] = useState({ saved: false, error: null, message: '' });
-    
-    // State for document validation and auto-fill
+    const [submissionId, setSubmissionId] = useState(null);
     const [docValidationStatus, setDocValidationStatus] = useState({});
-    const [autoFilledFields, setAutoFilledFields] = useState({}); // For mainLoan fields sourced from KYC
-    const [kycAutoFilledFields, setKycAutoFilledFields] = useState({ aadhaar: {}, pan: {} }); // For specific KYC fields auto-filled from DB
-    
-    const [showValidationErrors, setShowValidationErrors] = useState(false);
     const [isFormValidForSubmit, setIsFormValidForSubmit] = useState(false);
+    const [autoFilledFields, setAutoFilledFields] = useState({});
+    const [showValidationErrors, setShowValidationErrors] = useState(false);
+
+    const [aadhaarPhotoIdForVerification, setAadhaarPhotoIdForVerification] = useState(null);
+    const [isFaceVerificationComplete, setIsFaceVerificationComplete] = useState(false);
+    const [showFaceVerificationModule, setShowFaceVerificationModule] = useState(false);
+    const [faceVerificationError, setFaceVerificationError] = useState("");
+
+    const [annexureEligibleMismatches, setAnnexureEligibleMismatches] = useState([]); 
+    const [showAnnexureUpload, setShowAnnexureUpload] = useState(false);
+    const [annexureFile, setAnnexureFile] = useState(null); 
+    const [existingAnnexureFileRef, setExistingAnnexureFileRef] = useState(null); 
+    const [annexureFileError, setAnnexureFileError] = useState("");
+
 
     const formRef = useRef(null);
 
-    // Initialize form data from schemas and potentially a draft
-    const initializeFormData = useCallback((loanDef, aadhaarDef, panDef, draftData = null) => {
-        // Initialize mainFormData (amount and custom fields)
-        const initialMainFormData = { amount: draftData?.amount ?? (loanDef?.min_amount || '') };
-        (loanDef?.fields || []).forEach(f => {
+    const getFieldKeyFromSource = (sourceString) => { if (!sourceString) return null; const p = sourceString.split('.'); return p.length > 1 ? p[p.length - 1] : null; };
+    const formatDate = (dateString) => { const date = dateString ? parseISO(dateString) : null; return date && isValid(date) ? format(date, 'MMM d,<y_bin_46> h:mm a') : 'N/A'; }
+    
+    const formatDateToYYYYMMDD = (dateStr) => { 
+        if (!dateStr || typeof dateStr !== "string") return dateStr;
+        const isoMatch = dateStr.match(/^(\d{4}-\d{2}-\d{2})/);
+        if (isoMatch) return isoMatch[1];
+        const ddmmMatch = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (!ddmmMatch) return dateStr;
+        const [_, day, month, year] = ddmmMatch;
+        return `${year}-${month}-${day}`;
+    };
+     // Converts<y_bin_46>-MM-DD to DD-MM-YYYY for submission
+    const formatDateToDDMMYYYY = (isoDateString) => {
+        if (!isoDateString || !/^\d{4}-\d{2}-\d{2}$/.test(isoDateString)) return isoDateString;
+        const parts = isoDateString.split('-');
+        if (parts.length !== 3) return isoDateString;
+        const [year, month, day] = parts;
+        return `${day}-${month}-${year}`;
+    };
+
+    const initializeForm = useCallback((loanDef, draftData = null) => {
+        const initialFd = {}; const initialExistingRefs = {};
+        const customFields = loanDef?.fields || [];
+        const reqDocs = loanDef?.required_documents || [];
+
+        initialFd.amount = draftData?.amount ?? (loanDef?.min_amount || '');
+        customFields.forEach(f => {
             const draftField = draftData?.fields?.find(df => df.field_id === f.field_id);
-            initialMainFormData[f.field_id] = draftField?.value ?? (f.type === 'checkbox' ? false : '');
-            if ((f.type === 'image' || f.type === 'document') && draftField?.value) {
-                setExistingFileRefs(prev => ({ ...prev, [`mainLoan_${f.field_id}`]: draftField.value }));
+            const isPotentiallyAutoFill = f.auto_fill_sources && f.auto_fill_sources.length > 0;
+            let initialValue = '';
+            if (draftData && !isPotentiallyAutoFill && draftField?.value !== undefined) {
+                initialValue = draftField.value;
+            } else if (isPotentiallyAutoFill) {
+                initialValue = ''; 
+            } else if (draftData && draftField?.value !== undefined) { 
+                initialValue = draftField.value;
+            } else if (f.default_value !== undefined) { 
+                initialValue = f.default_value;
             }
-        });
-        setMainFormData(initialMainFormData);
+            if (f.type === 'date' && initialValue) {
+                initialValue = formatDateToYYYYMMDD(initialValue);
+            }
+            initialFd[f.field_id] = initialValue;
 
-        // Initialize Aadhaar FormData
-        const initialAadhaarData = {};
-        (aadhaarDef?.fields || []).forEach(f => {
-            const draftValue = draftData?.aadhaarFormData?.[f.key];
-            initialAadhaarData[f.key] = draftValue ?? (f.type === 'checkbox' ? false : '');
-            if ((f.type === 'image' || f.type === 'document') && draftValue && typeof draftValue === 'string') {
-                 setExistingFileRefs(prev => ({ ...prev, [`aadhaar_${f.key}`]: draftValue }));
-            }
+            if ((f.type === 'image' || f.type === 'document') && draftField?.value) { initialExistingRefs[f.field_id] = draftField.value; }
         });
-        setAadhaarFormData(initialAadhaarData);
         
-        // Initialize PAN FormData
-        const initialPanData = {};
-        (panDef?.fields || []).forEach(f => {
-            const draftValue = draftData?.panFormData?.[f.key];
-            initialPanData[f.key] = draftValue ?? (f.type === 'checkbox' ? false : '');
-            if ((f.type === 'image' || f.type === 'document') && draftValue && typeof draftValue === 'string') {
-                 setExistingFileRefs(prev => ({ ...prev, [`pan_${f.key}`]: draftValue }));
-            }
-        });
-        setPanFormData(initialPanData);
-        
-        // Initialize other required docs from draft
-        (loanDef?.required_documents || []).forEach(doc => {
-            if (aadhaarDef && doc.name.toLowerCase() === aadhaarDef.name.toLowerCase()) return;
-            if (panDef && doc.name.toLowerCase() === panDef.name.toLowerCase()) return;
-            const docNameKey = doc.name.replace(/\s+/g, '_');
-            const draftRefKey = `otherDoc_${docNameKey}`;
-            if (draftData?.fileReferences?.[draftRefKey]) {
-                setExistingFileRefs(prev => ({ ...prev, [draftRefKey]: draftData.fileReferences[draftRefKey] }));
-            }
-        });
+        const allDocsForDraft = [...reqDocs];
+        if (!reqDocs.find(d => d.name === 'aadhaar_card')) allDocsForDraft.push({ name: 'aadhaar_card' });
+        if (!reqDocs.find(d => d.name === 'pan_card')) allDocsForDraft.push({ name: 'pan_card' });
 
-        // Restore statuses from draft if available
-        if (draftData?.docValidationStatus) setDocValidationStatus(draftData.docValidationStatus);
-        if (draftData?.autoFilledFields) setAutoFilledFields(draftData.autoFilledFields);
-        if (draftData?.kycAutoFilledFields) setKycAutoFilledFields(draftData.kycAutoFilledFields);
-        else setKycAutoFilledFields({ aadhaar: {}, pan: {} }); // Ensure reset if not in draft
+        allDocsForDraft.forEach(doc => { 
+            const draftRefKey = `reqDoc_${doc.name}`; 
+            if (draftData?.fileReferences?.[draftRefKey]) { 
+                initialExistingRefs[draftRefKey] = draftData.fileReferences[draftRefKey]; 
+            } 
+        });
+        if (draftData?.annexureDocumentRef) {
+            setExistingAnnexureFileRef(draftData.annexureDocumentRef);
+        }
 
-        // Reset file input states and other UI states
+
+        const draftAutoFilled = draftData?.autoFilledFields || {};
+        setFormData(initialFd);
+        setRequiredDocFiles({});
         setCustomFieldFiles({});
-        setOtherRequiredDocFiles({});
-        setAadhaarFieldFiles({});
-        setPanFieldFiles({});
+        setExistingFileRefs(initialExistingRefs);
         setFormErrors({});
         setApiError("");
         setAutoFillError("");
         setSubmissionStatus('filling');
-        setFinalLoanSubmissionId(null);
+        setSubmissionId(null);
+        setDocValidationStatus({});
+        setAutoFilledFields(draftAutoFilled);
         setShowValidationErrors(false);
-        setDraftSaveStatus({ saved: false, error: null, message: '' });
-    }, []); 
+        setAadhaarPhotoIdForVerification(null);
+        setIsFaceVerificationComplete(false);
+        setShowFaceVerificationModule(false);
+        setFaceVerificationError("");
+        setAnnexureEligibleMismatches([]); 
+        setShowAnnexureUpload(false);
+        setAnnexureFile(null);
+        setAnnexureFileError("");
 
 
-    // Effect to load initial schemas and draft data
+     }, []);
+
     useEffect(() => {
-        let isMounted = true;
-        const loadInitialData = async () => {
-            setLoading(true);
-            setApiError('');
-            let localAadhaarSchemaDef = null;
-            let localPanSchemaDef = null;
-            let localLoanDef = null;
+        if (!loanId) { setApiError("Loan ID is missing."); setLoading(false); return; }; let isMounted = true; setLoading(true);
+        const loadData = async () => {
             try {
-                // Fetch Loan Schema
                 const loanRes = await axiosInstance.get(`/api/loans/${loanId}`);
                 if (!isMounted) return;
-                localLoanDef = loanRes.data;
-                setLoanSchemaData(localLoanDef);
+                const loanDef = loanRes.data;
+                if (!loanDef.document_definitions) loanDef.document_definitions = {};
+                if (!loanDef.aadhaar_card_definition && loanDef.document_definitions.aadhaar_card) {
+                    loanDef.aadhaar_card_definition = loanDef.document_definitions.aadhaar_card;
+                } else if (!loanDef.aadhaar_card_definition) {
+                     console.warn("Aadhaar card definition missing from loan schema response.");
+                }
+                if (!loanDef.pan_card_definition && loanDef.document_definitions.pan_card) {
+                    loanDef.pan_card_definition = loanDef.document_definitions.pan_card;
+                } else if (!loanDef.pan_card_definition) {
+                     console.warn("PAN card definition missing from loan schema response.");
+                }
 
-                // Fetch Aadhaar Schema
-                try {
-                    const aadhaarRes = await axiosInstance.get(`/api/document/schema-definition/by-schema-id/${AADHAAR_SCHEMA_ID_CONST}`);
-                    if (isMounted) {
-                        localAadhaarSchemaDef = aadhaarRes.data;
-                        setAadhaarSchemaDef(localAadhaarSchemaDef);
-                    }
-                } catch (e) { console.error("Failed to load Aadhaar schema", e); if (isMounted) setApiError(prev => prev + "\nFailed to load Aadhaar definition."); }
-
-                // Fetch PAN Schema
-                try {
-                    const panRes = await axiosInstance.get(`/api/document/schema-definition/by-schema-id/${PAN_SCHEMA_ID_CONST}`);
-                    if (isMounted) {
-                        localPanSchemaDef = panRes.data;
-                        setPanSchemaDef(localPanSchemaDef);
-                    }
-                } catch (e) { console.error("Failed to load PAN schema", e); if (isMounted) setApiError(prev => prev + "\nFailed to load PAN definition."); }
-                
-                // Load Draft Data
+                setLoanSchemaData(loanDef);
                 let draftData = null;
                 try {
                     const draftRes = await axiosInstance.get(`/api/application/${loanId}/submissions/draft`);
-                    if (isMounted) draftData = draftRes.data;
+                    if (!isMounted) return; draftData = draftRes.data; console.log("Draft loaded:", draftData);
                 } catch (draftErr) {
                     if (draftErr.response?.status !== 404) console.error("Error loading draft:", draftErr);
                 }
-
-                // Initialize form with all fetched data
-                if (isMounted) initializeFormData(localLoanDef, localAadhaarSchemaDef, localPanSchemaDef, draftData);
-
+                initializeForm(loanDef, draftData);
             } catch (err) {
-                console.error("Error loading initial data:", err);
-                if (isMounted) setApiError(err.response?.data?.error || `Failed to load initial application data.`);
+                console.error("Error loading loan definition:", err);
+                if (isMounted) { setApiError(err.response?.data?.error || `Failed to load loan details (ID: ${loanId}).`); setLoanSchemaData(null); }
             } finally {
-                if (isMounted) setLoading(false);
+                if (isMounted) { setLoading(false); }
             }
         };
-        if (loanId) loadInitialData();
+        loadData();
         return () => { isMounted = false; };
-    }, [loanId, initializeFormData]); 
+     }, [loanId, initializeForm]);
 
+    const handleInputChange = useCallback((fieldId, value) => {
+        setFormData(prev => ({ ...prev, [fieldId]: value }));
+        setAutoFilledFields(prev => {
+            if (!prev[fieldId]) return prev;
+            if (String(prev[fieldId].value).toLowerCase() !== String(value).toLowerCase()) { 
+                const newState = {...prev}; delete newState[fieldId]; return newState;
+            }
+            return prev;
+        });
+        if (showValidationErrors) {
+            setFormErrors(prev => { if (!prev[fieldId]) return prev; const n = {...prev}; delete n[fieldId]; return n; });
+        }
+        if(apiError) setApiError(""); if(autoFillError) setAutoFillError("");
+     }, [apiError, autoFillError, showValidationErrors]);
 
-    // Handles changes to regular form fields (text, select, etc.)
-    const handleSectionFieldChange = useCallback((sectionName, fieldId, value) => {
-        const setSectionData = {
-            mainLoan: setMainFormData,
-            aadhaar: setAadhaarFormData,
-            pan: setPanFormData,
-        }[sectionName];
+    const handleCustomFieldFileChange = useCallback((fieldId, file) => {
+        setCustomFieldFiles(prev => { const n = {...prev}; if (file) n[fieldId] = file; else delete n[fieldId]; return n; });
+        setExistingFileRefs(prev => { const n = {...prev}; delete n[fieldId]; return n; });
+        handleInputChange(fieldId, file ? file.name : '');
+     }, [handleInputChange]);
 
-        if (setSectionData) {
-            setSectionData(prev => ({ ...prev, [fieldId]: value }));
+    const validateField = useCallback((fieldSchema, value) => {
+        const { required, type, min_value, max_value, field_label } = fieldSchema; const label = field_label || 'Field';
+        if (required && type !== 'image' && type !== 'document') { if (value === null || value === undefined || String(value).trim() === '') return `${label} is required.`; if (type === 'checkbox' && !value) return `${label} must be checked.`; } 
+        if (!required && (value === null || value === undefined || String(value).trim() === '')) return null; 
+        switch (type) {
+            case 'number': const n = parseFloat(value); if (isNaN(n)) return `${label} must be a valid number.`; if (min_value !== null && min_value !== undefined && String(min_value).trim() !== '' && n < parseFloat(min_value)) return `${label} must be at least ${min_value}.`; if (max_value !== null && max_value !== undefined && String(max_value).trim() !== '' && n > parseFloat(max_value)) return `${label} cannot exceed ${max_value}.`; break;
+            case 'text': case 'textarea': const s = String(value || ''); if (min_value !== null && min_value !== undefined && String(min_value).trim() !== '' && s.length < parseInt(min_value, 10)) return `${label} must be at least ${min_value} characters long.`; if (max_value !== null && max_value !== undefined && String(max_value).trim() !== '' && s.length > parseInt(max_value, 10)) return `${label} cannot exceed ${max_value} characters.`; break;
+            case 'date': case 'datetime-local':  
+                if (value && isNaN(Date.parse(value))) return `${label} must be a valid date.`;
+                if (min_value && value && new Date(value) < new Date(formatDateToYYYYMMDD(min_value))) return `${label} cannot be earlier than ${min_value}.`; 
+                if (max_value && value && new Date(value) > new Date(formatDateToYYYYMMDD(max_value))) return `${label} cannot be later than ${max_value}.`; 
+                break;
+            default: break;
+        } return null;
+     }, []);
+
+   const runFullValidation = useCallback((showErrors = false) => {
+        const currentErrors = {}; 
+        let hasHardErrors = false; 
+        let tempAnnexureEligibleMismatchesLocal = []; 
+
+        if (!loanSchemaData) {
+            setIsFormValidForSubmit(false);
+            return false;
         }
 
-        // Clear auto-fill status if user manually edits
-        if (sectionName === 'mainLoan' && autoFilledFields[fieldId]) {
-            setAutoFilledFields(prev => {
-                const newState = { ...prev };
-                delete newState[fieldId];
-                return newState;
-            });
-        } else if ((sectionName === 'aadhaar' || sectionName === 'pan') && kycAutoFilledFields[sectionName]?.[fieldId]) {
-            setKycAutoFilledFields(prev => ({
-                ...prev,
-                [sectionName]: {
-                    ...(prev[sectionName] || {}), 
-                    [fieldId]: false 
-                }
-            }));
-        }
+        if (!formData.amount || isNaN(formData.amount) || Number(formData.amount) <= 0) { currentErrors['amount'] = 'A valid positive amount is required.'; hasHardErrors = true; }
+        else if (loanSchemaData.min_amount !== null && Number(formData.amount) < loanSchemaData.min_amount) { currentErrors['amount'] = `Amount must be at least ₹${loanSchemaData.min_amount?.toLocaleString('en-IN')}.`; hasHardErrors = true; }
+        else if (loanSchemaData.max_amount !== null && Number(formData.amount) > loanSchemaData.max_amount) { currentErrors['amount'] = `Amount cannot exceed ₹${loanSchemaData.max_amount?.toLocaleString('en-IN')}.`; hasHardErrors = true; }
 
-        // Clear specific field error if shown and then edited
-        if (showValidationErrors && formErrors[sectionName]?.[fieldId]) {
-            setFormErrors(prev => {
-                const newSectionErrors = { ...(prev[sectionName] || {}) };
-                delete newSectionErrors[fieldId];
-                return { ...prev, [sectionName]: newSectionErrors };
-            });
-        }
-        setApiError(""); 
-        setAutoFillError(""); 
-        setDraftSaveStatus(prev => ({ ...prev, saved: false, message: '' })); 
-    }, [autoFilledFields, kycAutoFilledFields, showValidationErrors, formErrors]); 
+        loanSchemaData.fields.forEach(f => { const error = validateField(f, formData[f.field_id]); if (error) { currentErrors[f.field_id] = error; hasHardErrors = true; } });
+        
+        const allDocsForValidation = [
+            { key: 'aadhaar_card', def: loanSchemaData.aadhaar_card_definition, isMandatorySystemLevel: true },
+            { key: 'pan_card', def: loanSchemaData.pan_card_definition, isMandatorySystemLevel: true },
+            ...(loanSchemaData.required_documents?.filter(doc => doc.name !== 'aadhaar_card' && doc.name !== 'pan_card')
+                .map(doc => ({ key: doc.name, def: loanSchemaData.document_definitions?.[doc.name], isMandatorySystemLevel: false, loanReqDocEntry: doc })) || [])
+        ];
 
-    // Handles file changes for custom loan fields
-    const handleMainLoanCustomFileChange = useCallback((fieldId, file) => { 
-        setCustomFieldFiles(prev => file ? { ...prev, [fieldId]: file } : (({ [fieldId]: _, ...rest }) => rest)(prev));
-        setExistingFileRefs(prev => (({ [`mainLoan_${fieldId}`]: _, ...rest }) => rest)(prev)); 
-        setDraftSaveStatus(prev => ({ ...prev, saved: false, message: '' }));
-    }, []);
-    
-    // Handles file changes for "Other Required Documents"
-    const handleOtherRequiredDocFileChange = useCallback((docNameKey, file) => {
-        setOtherRequiredDocFiles(prev => file ? { ...prev, [docNameKey]: file } : (({ [docNameKey]: _, ...rest }) => rest)(prev));
-        setExistingFileRefs(prev => (({ [`otherDoc_${docNameKey}`]: _, ...rest }) => rest)(prev)); 
-        setDraftSaveStatus(prev => ({ ...prev, saved: false, message: '' }));
-    }, []);
-
-    // Logic for extracting data from KYC document image and then fetching verified data from DB
-    // This function must be defined before handleKycFileChange which uses it.
-    const triggerEntityExtraction = useCallback(async (docDisplayName, file, docDefinition) => {
-        console.log(`Attempting entity extraction for ${docDisplayName}`);
-        setDocValidationStatus(prev => ({ ...prev, [docDisplayName]: { status: 'image_extracting', message: 'Extracting data from image...' } }));
-        setAutoFillError(''); 
-        setApiError('');
-        const kycSectionKey = docDefinition.schema_id === AADHAAR_SCHEMA_ID_CONST ? 'aadhaar' : 'pan';
-        setKycAutoFilledFields(prevKyc => ({ ...prevKyc, [kycSectionKey]: {} })); 
-
-        if (!docDefinition || !docDefinition.fields) {
-            setDocValidationStatus(prev => ({ ...prev, [docDisplayName]: { status: 'error', message: 'Document definition not found.' } }));
-            return;
-        }
-
-        let extractedDataFromImage;
-        try { // Phase 1: Image Extraction
-            const imageExtractFormData = new FormData();
-            imageExtractFormData.append('document', file);
-            imageExtractFormData.append('docType', docDefinition.schema_id);
-            imageExtractFormData.append('fields', JSON.stringify({
-                label: docDefinition.name,
-                fields: docDefinition.fields.map(f => ({ key: f.key, label: f.label, prompt: f.prompt || '' }))
-            }));
-
-            const imageResponse = await axiosInstance.post('/api/application/extract-entity', imageExtractFormData, { headers: { 'Content-Type': 'multipart/form-data' } });
-            const { entities: extractedPairs, doc_name: detectedDocTypeApi } = imageResponse.data;
-
-            if (detectedDocTypeApi !== docDefinition.schema_id) {
-                setDocValidationStatus(prev => ({ ...prev, [docDisplayName]: { status: 'error', message: `Incorrect document type. Expected ${docDefinition.name}, got ${detectedDocTypeApi || 'Unknown'}.` } }));
-                setAutoFillError(`Incorrect document type for ${docDisplayName}. Please upload the correct document.`);
+        allDocsForValidation.forEach(docInfo => {
+            if (!docInfo.def && (docInfo.isMandatorySystemLevel || loanSchemaData.required_documents.find(rd => rd.name === docInfo.key)) ) { 
+                currentErrors[`reqDoc_${docInfo.key}`] = `${docInfo.key.replace('_', ' ')} definition is missing. Contact support.`;
+                hasHardErrors = true;
                 return;
             }
-            extractedDataFromImage = extractedPairs.reduce((acc, pair) => { if (pair.key) acc[pair.key] = pair.value; return acc; }, {});
-            setDocValidationStatus(prev => ({ ...prev, [docDisplayName]: { status: 'image_extracted', message: 'Data extracted from image. Looking up in database...' } }));
+            const docLabel = docInfo.def?.label || docInfo.loanReqDocEntry?.name || docInfo.key;
+            const docRefKey = `reqDoc_${docInfo.key}`;
+            const hasUploadedFile = !!requiredDocFiles[docInfo.key];
+            const hasExistingFile = !!existingFileRefs[docRefKey];
+            const statusInfo = docValidationStatus[docInfo.key];
 
-        } catch (imageError) {
-            console.error(`Image entity extraction failed for ${docDisplayName}:`, imageError);
-            const errorMsg = imageError.response?.data?.error || 'Failed to process document image.';
-            setDocValidationStatus(prev => ({ ...prev, [docDisplayName]: { status: 'error', message: errorMsg } }));
-            setApiError(`Error processing ${docDisplayName} image: ${errorMsg}`);
-            return;
-        }
+            if (!hasUploadedFile && !hasExistingFile) {
+                currentErrors[docRefKey] = `${docLabel} is required.`; 
+                hasHardErrors = true;
+            } else if (!statusInfo || statusInfo.status !== 'verified') {
+                let isErrorSolelyAnnexureEligibleThisDoc = false;
+                if (statusInfo?.status === 'error' && statusInfo.mismatches && statusInfo.mismatches.length > 0) {
+                    isErrorSolelyAnnexureEligibleThisDoc = statusInfo.mismatches.every(
+                        mm => ANNEXURE_ELIGIBLE_FIELD_LABELS.includes(mm.fieldLabel)
+                    );
+                    if (isErrorSolelyAnnexureEligibleThisDoc) {
+                        statusInfo.mismatches.forEach(mm => {
+                            tempAnnexureEligibleMismatchesLocal.push({
+                                docTypeKey: docInfo.key,
+                                fieldLabel: mm.fieldLabel,
+                                extractedValue: mm.actual,
+                                formValue: mm.expected 
+                            });
+                        });
+                        currentErrors[docRefKey] = `${docLabel} has Name/Address discrepancies. Annexure may be required.`;
+                    } else { 
+                        currentErrors[docRefKey] = `${docLabel} has critical data mismatches or other verification issues. Please re-upload or check the document. Status: ${statusInfo?.status || 'Pending'}.`;
+                        hasHardErrors = true;
+                    }
+                } else if (statusInfo?.status !== 'verified') { // Not 'verified' and not 'error with mismatches'
+                    currentErrors[docRefKey] = `${docLabel} requires successful verification. Status: ${statusInfo?.status || 'Pending'}.`;
+                    hasHardErrors = true;
+                }
+            }
+        });
+        
+        setAnnexureEligibleMismatches(tempAnnexureEligibleMismatchesLocal);
 
-        // Phase 2: Identify unique key and its value from extracted data
-        const uniqueFieldDef = docDefinition.fields.find(f => f.is_unique_identifier === true);
-        if (!uniqueFieldDef) {
-            setDocValidationStatus(prev => ({ ...prev, [docDisplayName]: { status: 'error', message: 'No unique identifier field defined in schema.' } }));
-            setAutoFillError(`Configuration error: No unique identifier defined for ${docDisplayName} to perform database lookup.`);
-            return;
-        }
+        let finalFormValidity = !hasHardErrors; 
 
-        const uniqueFieldValueFromImage = extractedDataFromImage[uniqueFieldDef.key];
-        if (!uniqueFieldValueFromImage) {
-            setDocValidationStatus(prev => ({ ...prev, [docDisplayName]: { status: 'unique_id_missing_from_image', message: `Could not extract unique ID (${uniqueFieldDef.label}) from the document image.` } }));
-            setAutoFillError(`Could not extract unique ID (${uniqueFieldDef.label}) from ${docDisplayName} image. Please ensure the image is clear or enter data manually.`);
-            return;
+        if (tempAnnexureEligibleMismatchesLocal.length > 0) {
+            setShowAnnexureUpload(true); 
+            if (!(annexureFile || existingAnnexureFileRef)) {
+                currentErrors['annexure'] = "An annexure document is required to resolve the noted name/address discrepancies.";
+                finalFormValidity = false; 
+            } else if (finalFormValidity) { 
+                tempAnnexureEligibleMismatchesLocal.forEach(aem => {
+                    if (currentErrors[`reqDoc_${aem.docTypeKey}`]?.includes("Annexure may be required")) {
+                        delete currentErrors[`reqDoc_${aem.docTypeKey}`];
+                    }
+                });
+            }
+        } else {
+            setShowAnnexureUpload(false);
         }
         
-        setDocValidationStatus(prev => ({ ...prev, [docDisplayName]: { status: 'db_lookup', message: `Found Unique ID: ${uniqueFieldValueFromImage}. Checking database...` } }));
+        if (!isFaceVerificationComplete && showFaceVerificationModule) { 
+            currentErrors['face_verification'] = 'Face verification is required to submit the application.';
+            finalFormValidity = false; 
+        }
 
-        // Phase 3: Call backend to fetch verified data from DB using the unique ID
+        if (showErrors) { setFormErrors(currentErrors); }
+        setIsFormValidForSubmit(finalFormValidity); 
+        return finalFormValidity;
+   }, [formData, loanSchemaData, requiredDocFiles, existingFileRefs, docValidationStatus, validateField, isFaceVerificationComplete, showFaceVerificationModule, annexureFile, existingAnnexureFileRef]);
+
+    useEffect(() => { runFullValidation(false); }, [runFullValidation]);
+
+    const triggerEntityExtraction = useCallback(async (docTypeKey, file) => {
+        console.log(`Triggering entity extraction for ${docTypeKey}...`);
+        let docDefinition;
+        if (docTypeKey === 'aadhaar_card') docDefinition = loanSchemaData?.aadhaar_card_definition;
+        else if (docTypeKey === 'pan_card') docDefinition = loanSchemaData?.pan_card_definition;
+        else docDefinition = loanSchemaData?.document_definitions?.[docTypeKey];
+
+        if (!docDefinition) {
+            console.warn(`No document definition found for type ${docTypeKey}. Auto-fill skipped.`);
+            setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: [{ fieldLabel: 'Configuration Error', expected: '', actual: 'Document type not configured for auto-fill details.' }] } }));
+            return;
+        }
+
+        console.log(`Triggering entity extraction for ${docDefinition.label || docTypeKey} (type: ${docTypeKey})`);
+        setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'validating', mismatches: null } }));
+        setAutoFillError(''); setApiError('');
+        setAnnexureEligibleMismatches(prev => prev.filter(m => m.docTypeKey !== docTypeKey)); 
+
+        const docFieldsSchema = docDefinition.fields || [];
+        if (docFieldsSchema.length === 0) {
+            console.warn(`No field schema defined for document type ${docTypeKey} (for ${docDefinition.label}). Auto-fill skipped.`);
+            setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: [{ fieldLabel: 'Configuration Error', expected: '', actual: 'Fields for this document type not configured.' }] } }));
+            return;
+        }
+        const fieldsPayload = JSON.stringify({ label: docDefinition.label || docTypeKey, fields: docFieldsSchema.map(f => ({ key: f.key, label: f.label, prompt: f.prompt || '' })) });
+
         try {
-            const dbResponse = await axiosInstance.get('/api/document/fetch-verified-data-by-unique-id', {
-                params: {
-                    schema_id_string: docDefinition.schema_id,
-                    unique_field_key: uniqueFieldDef.key,
-                    unique_field_value: uniqueFieldValueFromImage
+            const ocrApiFormData = new FormData(); 
+            ocrApiFormData.append('file', file); 
+            ocrApiFormData.append('docType', docTypeKey); 
+            ocrApiFormData.append('fields', fieldsPayload);
+            const ocrResponse = await axiosInstance.post('/api/application/extract-entity', ocrApiFormData, { headers: { 'Content-Type': 'multipart/form-data' } });
+            
+            const { extracted_data: extractedDataFromOCR, doc_name: detectedDocTypeFromApi } = ocrResponse.data; 
+
+            if (detectedDocTypeFromApi !== docTypeKey) {
+                 const expectedLabel = docDefinition.label || docTypeKey; 
+                 const actualDef = detectedDocTypeFromApi === 'aadhaar_card' ? loanSchemaData?.aadhaar_card_definition : (detectedDocTypeFromApi === 'pan_card' ? loanSchemaData?.pan_card_definition : loanSchemaData?.document_definitions?.[detectedDocTypeFromApi]);
+                 const actualLabel = actualDef?.label || detectedDocTypeFromApi || 'Unknown';
+                 const mismatchError = [{ fieldLabel: 'Document Type Mismatch', expected: docTypeKey, actual: detectedDocTypeFromApi || 'Unknown' }];
+                 setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: mismatchError } }));
+                 setAutoFillError(`Incorrect document type uploaded for ${expectedLabel}. Expected ${expectedLabel}, but received a document identified as ${actualLabel}.`);
+                 return;
+            }
+
+            const ocrDataMap = typeof extractedDataFromOCR === 'object' && !Array.isArray(extractedDataFromOCR)
+                ? { ...extractedDataFromOCR } 
+                : (Array.isArray(extractedDataFromOCR) 
+                    ? extractedDataFromOCR.reduce((acc, pair) => { 
+                        if (pair && pair.key) acc[pair.key] = pair.value; 
+                        return acc; 
+                      }, {})
+                    : {});
+            
+            let uniqueIdentifiersToCheck = Object.entries(ocrDataMap)
+                .map(([key, value]) => ({ key, value })) 
+                .filter(pair => 
+                    docDefinition.fields.some(f => f.is_unique_identifier && f.key === pair.key && pair.value && String(pair.value).trim() !== '') 
+                );
+
+            let dataToUseForAutofill = ocrDataMap; 
+            let photoIdForFaceVerification = null; 
+            let govDbCheckPerformed = false;
+            let govDbSourceNote = 'Data extracted via OCR.'; 
+            let govDbResponseData = null; 
+
+            if (uniqueIdentifiersToCheck.length > 0) {
+                govDbCheckPerformed = true;
+                try {
+                    const govDbApiResponse = await axiosInstance.post('/api/document/check-unique', {
+                        schema_definition_id: docDefinition._id, 
+                        identifiers_to_check: uniqueIdentifiersToCheck
+                    });
+                    govDbResponseData = govDbApiResponse.data; 
+                    console.log(`GovDB response for ${docTypeKey}:`, govDbResponseData);
+                    
+                    if (govDbResponseData.exists === true && govDbResponseData.matched_keys && govDbResponseData.matched_keys.length > 0) {
+                        const matchedSubmission = govDbResponseData.matched_keys[0]; 
+                        console.log(`Existing submission found in GovDB for ${docTypeKey}. Prioritizing this data.`);
+                        
+                        dataToUseForAutofill = (matchedSubmission.fields || []).reduce((acc, field) => {
+                            acc[field.field_id] = field.value; 
+                            if (docTypeKey === 'aadhaar_card' && (field.field_id === 'photo' || field.key === 'photo') && field.fileRef) { 
+                                photoIdForFaceVerification = field.fileRef;
+                                console.log(`Photo ID for face verification from GovDB Aadhaar: ${photoIdForFaceVerification}`);
+                            }
+                            return acc;
+                        }, {});
+                        govDbSourceNote = 'Data matched with existing verified record.';
+                        setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'verified', mismatches: null, note: govDbSourceNote } }));
+
+                    } else if (govDbResponseData.exists === false && govDbResponseData.totalCount > 0) {
+                        console.warn(`No exact match in GovDB for ${docTypeKey}, but other records exist.`);
+                        const mismatchErrorMsg = `The uploaded ${docDefinition.label || docTypeKey} does not match our existing records. Please upload a valid document or ensure the details are correct.`;
+                        setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: [{ fieldLabel: 'Document Verification', expected: 'Match in existing records', actual: 'No exact match found.' }] } }));
+                        setAutoFillError(mismatchErrorMsg);
+                        return; 
+                    } else { 
+                        console.log(`No existing record in GovDB for ${docTypeKey} (totalCount: ${govDbResponseData.totalCount || 0}). Using extracted OCR data.`);
+                    }
+
+                } catch (govDbError) {
+                    console.warn(`Could not verify unique identifiers against GovDB for ${docTypeKey}:`, govDbError);
+                    setAutoFillError(`Could not verify document against central records. Auto-fill will use extracted data. ${govDbError.response?.data?.message || ''}`);
+                }
+            } else {
+                console.log(`No unique identifiers found/defined in the uploaded ${docTypeKey} to check against GovDB. Using extracted OCR data.`);
+            }
+
+            if (docTypeKey === 'aadhaar_card' && photoIdForFaceVerification) {
+                setAadhaarPhotoIdForVerification(photoIdForFaceVerification);
+                setShowFaceVerificationModule(true);
+            } else if (docTypeKey === 'aadhaar_card' && !photoIdForFaceVerification) {
+                console.warn("Aadhaar processed, but no usable photo_id obtained for face verification from GovDB. This might be a new Aadhaar or data issue.");
+                setShowFaceVerificationModule(false); 
+                setAadhaarPhotoIdForVerification(null);
+                if (govDbCheckPerformed && govDbResponseData && govDbResponseData.exists === false && (govDbResponseData.totalCount === 0 || govDbResponseData.totalCount === undefined) ) {
+                     setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'verified', mismatches: null, note: 'New document processed via OCR.' } }));
+                } else if (!govDbCheckPerformed) { 
+                     setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'verified', mismatches: null, note: 'New document processed via OCR (no unique IDs to check in DB).' } }));
+                }
+            }
+            
+            const currentMismatches = []; 
+            let canProceedWithOverallFill = true; 
+
+            loanSchemaData?.fields.forEach(targetField => {
+                const relevantSource = targetField.auto_fill_sources?.find(source => source.startsWith(`${docTypeKey}.`));
+                if (relevantSource) {
+                    const sourceKey = getFieldKeyFromSource(relevantSource);
+                    if (sourceKey && dataToUseForAutofill.hasOwnProperty(sourceKey)) {
+                        const autoFillValueStr = String(dataToUseForAutofill[sourceKey] ?? '');
+                        const targetFieldId = targetField.field_id;
+
+                        if (autoFilledFields[targetFieldId] && autoFilledFields[targetFieldId].verifiedByDocType !== docTypeKey) {
+                             const existingVerifiedValueStr = String(autoFilledFields[targetFieldId].value ?? '');
+                             if (existingVerifiedValueStr.toLowerCase() !== autoFillValueStr.toLowerCase()) {
+                                const conflictingDocDef = autoFilledFields[targetFieldId].verifiedByDocType === 'aadhaar_card' ? loanSchemaData?.aadhaar_card_definition : (autoFilledFields[targetFieldId].verifiedByDocType === 'pan_card' ? loanSchemaData?.pan_card_definition : loanSchemaData?.document_definitions?.[autoFilledFields[targetFieldId].verifiedByDocType]);
+                                const conflictingDocLabel = conflictingDocDef?.label || autoFilledFields[targetFieldId].verifiedByDocType;
+                                currentMismatches.push({ fieldLabel: targetField.field_label, expected: existingVerifiedValueStr, actual: autoFillValueStr, conflictingDoc: conflictingDocLabel });
+                                canProceedWithOverallFill = false; 
+                             }
+                        }
+                    }
                 }
             });
 
-            const { verifiedData } = dbResponse.data; 
-            
-            if (verifiedData && verifiedData.fields) {
-                // Compare extracted data with DB data before filling
-                let allMatch = true;
-                const mismatches = [];
-                docDefinition.fields.forEach(fieldDef => {
-                    if (fieldDef.type !== 'image' && fieldDef.type !== 'document') {
-                        const extractedVal = extractedDataFromImage[fieldDef.key];
-                        const dbVal = verifiedData.fields[fieldDef.key];
-                        if (verifiedData.fields.hasOwnProperty(fieldDef.key)) {
-                            if (extractedDataFromImage.hasOwnProperty(fieldDef.key)) {
-                                if (String(extractedVal).trim() !== String(dbVal).trim()) {
-                                    allMatch = false;
-                                    mismatches.push({ field: fieldDef.label, extracted: extractedVal, database: dbVal });
+            if (canProceedWithOverallFill) {
+                let updatedFormDataFlag = false;
+                const newAutoFilledForThisDoc = {};
+                const currentFormDataSnapshot = { ...formData }; 
+
+                loanSchemaData?.fields.forEach(targetField => {
+                    const relevantSource = targetField.auto_fill_sources?.find(source => source.startsWith(`${docTypeKey}.`));
+                    if (relevantSource) {
+                        const sourceKey = getFieldKeyFromSource(relevantSource);
+                        if (sourceKey && dataToUseForAutofill.hasOwnProperty(sourceKey)) {
+                            let autoFillValue = String(dataToUseForAutofill[sourceKey] ?? '');
+                            if (targetField.type === 'date' && autoFillValue.match(/^\d{2}-\d{2}-\d{4}$/)) { 
+                                autoFillValue = formatDateToYYYYMMDD(autoFillValue); 
+                            } else if (targetField.type === 'date' && autoFillValue.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) { 
+                                autoFillValue = autoFillValue.split('T')[0]; 
+                            }
+
+                            const targetFieldId = targetField.field_id;
+                            const existingManualValue = String(currentFormDataSnapshot[targetFieldId] ?? '');
+
+                            if (existingManualValue.toLowerCase() === '' || existingManualValue.toLowerCase() === autoFillValue.toLowerCase() || 
+                                (autoFilledFields[targetFieldId] && autoFilledFields[targetFieldId].verifiedByDocType === docTypeKey)
+                            ) {
+                                if (currentFormDataSnapshot[targetFieldId] !== autoFillValue) { 
+                                    currentFormDataSnapshot[targetFieldId] = autoFillValue;
+                                    updatedFormDataFlag = true;
                                 }
-                            } else {
-                                console.warn(`Field "${fieldDef.label}" found in DB but not in image extraction for ${docDisplayName}.`);
+                                newAutoFilledForThisDoc[targetFieldId] = { value: autoFillValue, verifiedByDocType: docTypeKey, originalSourceKey: sourceKey }; // Store originalSourceKey
+                            } else if (existingManualValue !== '' && existingManualValue.toLowerCase() !== autoFillValue.toLowerCase()) {
+                                currentMismatches.push({ fieldLabel: targetField.field_label, expected: existingManualValue, actual: autoFillValue, note: "manual value conflict" });
                             }
                         }
                     }
                 });
 
-                if (allMatch) {
-                    const setRelevantFormData = kycSectionKey === 'aadhaar' ? setAadhaarFormData : setPanFormData;
-                    const newKycAutoFilledForThisSection = {};
+                if (updatedFormDataFlag) {
+                    setFormData(currentFormDataSnapshot);
+                }
+                if (Object.keys(newAutoFilledForThisDoc).length > 0) {
+                     setAutoFilledFields(prevAutoFilled => ({ ...prevAutoFilled, ...newAutoFilledForThisDoc }));
+                }
 
-                    setRelevantFormData(prevData => {
-                        const newSectionData = { ...prevData };
-                        Object.keys(verifiedData.fields).forEach(dbFieldKey => {
-                            if (newSectionData.hasOwnProperty(dbFieldKey)) { 
-                                newSectionData[dbFieldKey] = verifiedData.fields[dbFieldKey];
-                                newKycAutoFilledForThisSection[dbFieldKey] = true;
-                            }
-                        });
-                        return newSectionData;
-                    });
-
-                    if (Object.keys(newKycAutoFilledForThisSection).length > 0) {
-                        setKycAutoFilledFields(prevKyc => ({ 
-                            ...prevKyc, 
-                            [kycSectionKey]: { ...(prevKyc[kycSectionKey] || {}), ...newKycAutoFilledForThisSection } 
-                        }));
-                    }
-                    setDocValidationStatus(prev => ({ ...prev, [docDisplayName]: { status: 'verified_db_match', message: 'Data auto-filled from verified database record. Extracted data matches DB.' } }));
-                    console.log(`${docDisplayName} data auto-filled from DB for unique ID ${uniqueFieldValueFromImage}. Data matches image extraction.`);
-
-                    // Auto-fill mainLoan fields (using DB verified data)
-                    setAutoFilledFields(prevAutoFilled => {
-                        const newAutoFilledForMainLoan = {};
-                        let mainFormUpdate = {};
-                        (loanSchemaData?.fields || []).forEach(loanField => {
-                            if (loanField.auto_fill_sources && loanField.auto_fill_sources.length > 0) {
-                                loanField.auto_fill_sources.forEach(sourceStr => {
-                                    const [sourceDocSchemaId, sourceFieldKey] = sourceStr.split('.');
-                                    if (sourceDocSchemaId === docDefinition.schema_id && verifiedData.fields.hasOwnProperty(sourceFieldKey)) {
-                                        const dbValueForSource = verifiedData.fields[sourceFieldKey];
-                                        mainFormUpdate[loanField.field_id] = dbValueForSource;
-                                        newAutoFilledForMainLoan[loanField.field_id] = { value: dbValueForSource, verifiedByDocType: docDefinition.schema_id };
-                                    }
-                                });
-                            }
-                        });
-                        if(Object.keys(mainFormUpdate).length > 0) {
-                            setMainFormData(prevMain => ({...prevMain, ...mainFormUpdate}));
+                const currentDocStatus = docValidationStatus[docTypeKey];
+                if (!currentDocStatus || (currentDocStatus.status !== 'error' || (currentDocStatus.mismatches && currentDocStatus.mismatches[0]?.expected !== 'Match in existing records'))) {
+                    if (currentMismatches.length > 0) {
+                        setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: currentMismatches } }));
+                        setAutoFillError(`Data conflicts found for ${docDefinition.label || docTypeKey}. Please review manual entries.`);
+                        const allMismatchesAnnexureEligible = currentMismatches.every(mm => ANNEXURE_ELIGIBLE_FIELD_LABELS.includes(mm.fieldLabel));
+                        if (allMismatchesAnnexureEligible) {
+                            setAnnexureEligibleMismatches(prev => [...prev.filter(m => m.docTypeKey !== docTypeKey), ...currentMismatches.map(mm => ({...mm, docTypeKey}))]);
                         }
-                        return Object.keys(newAutoFilledForMainLoan).length > 0 ? {...prevAutoFilled, ...newAutoFilledForMainLoan} : prevAutoFilled;
-                    });
 
-                } else { // Mismatch found
-                    setDocValidationStatus(prev => ({ ...prev, [docDisplayName]: { status: 'db_data_mismatch', message: 'Data extracted from image does not match verified database record. Please review and fill manually.', mismatches: mismatches } }));
-                    setAutoFillError(`Data mismatch for ${docDisplayName}. Extracted: ${JSON.stringify(mismatches.map(m => ({field: m.field, extracted: m.extracted})))}. DB values were not auto-filled. Please correct manually.`);
+                    } else if (currentDocStatus?.status !== 'verified') { 
+                        setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'verified', mismatches: null, note: govDbSourceNote } }));
+                        console.log(`${docDefinition.label || docTypeKey} processed for auto-fill. Source: ${govDbSourceNote.includes('existing record') ? 'GovDB' : 'OCR'}`);
+                    }
                 }
-
-            } else { // No verifiedData.fields from DB
-                setDocValidationStatus(prev => ({ ...prev, [docDisplayName]: { status: 'db_match_not_found', message: 'Verified record not found in database. Please fill manually.' } }));
-                setAutoFillError(`No verified record found in database for ${docDisplayName} with ID ${uniqueFieldValueFromImage}. Please fill details manually.`);
+            } else { 
+                setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: currentMismatches } }));
+                setAutoFillError(`Critical data mismatches found for ${docDefinition.label || docTypeKey} against previously verified documents. Values not auto-filled.`);
+                console.error(`${docDefinition.label || docTypeKey} verification failed due to critical mismatches with other documents.`);
             }
-        } catch (dbError) {
-            console.error(`Database lookup failed for ${docDisplayName}:`, dbError);
-            const errorMsg = dbError.response?.data?.message || 'Failed to fetch verified data from database.';
-            if (dbError.response?.status === 404) {
-                 setDocValidationStatus(prev => ({ ...prev, [docDisplayName]: { status: 'db_match_not_found', message: errorMsg } }));
-                 setAutoFillError(`No verified record found for ${docDisplayName} with ID ${uniqueFieldValueFromImage}. Please fill details manually.`);
+
+        } catch (error) {
+            console.error(`Entity extraction or GovDB check failed for ${docDefinition?.label || docTypeKey}:`, error);
+            const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to process document.';
+            setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: [{ fieldLabel: 'Processing Error', expected: '', actual: errorMsg }] } }));
+            setApiError(`Error processing ${docDefinition?.label || docTypeKey}: ${errorMsg}`);
+        }
+     }, [loanSchemaData, formData, autoFilledFields, getFieldKeyFromSource, docValidationStatus]); 
+
+     const handleRequiredDocFileChangeCallback = useCallback((docTypeKey, file) => {
+         setRequiredDocFiles(prev => { const n = {...prev}; if (file) n[docTypeKey] = file; else delete n[docTypeKey]; return n; });
+         const refKey = `reqDoc_${docTypeKey}`;
+         setExistingFileRefs(prev => { const n = {...prev}; delete n[refKey]; return n; });
+         setAnnexureEligibleMismatches(prev => prev.filter(m => m.docTypeKey !== docTypeKey)); 
+         setShowAnnexureUpload(false); 
+
+        if (file) {
+            triggerEntityExtraction(docTypeKey, file);
+        } else { 
+            setDocValidationStatus(prev => { const n = {...prev}; delete n[docTypeKey]; return n; });
+            const clearedDocTypeKey = docTypeKey; 
+            if (clearedDocTypeKey) {
+                const newFormData = { ...formData };
+                const newAutoFilled = { ...autoFilledFields };
+                let changedInFormData = false;
+                let changedInAutoFilled = false;
+
+                Object.keys(autoFilledFields).forEach(fieldId => {
+                    if (autoFilledFields[fieldId]?.verifiedByDocType === clearedDocTypeKey) {
+                        if (String(newFormData[fieldId]).toLowerCase() === String(autoFilledFields[fieldId].value).toLowerCase()) {
+                            newFormData[fieldId] = '';
+                            changedInFormData = true;
+                        }
+                        delete newAutoFilled[fieldId];
+                        changedInAutoFilled = true;
+                    }
+                });
+                if (changedInFormData) setFormData(newFormData);
+                if (changedInAutoFilled) setAutoFilledFields(newAutoFilled);
+                
+                let docDef;
+                if (clearedDocTypeKey === 'aadhaar_card') docDef = loanSchemaData?.aadhaar_card_definition;
+                else if (clearedDocTypeKey === 'pan_card') docDef = loanSchemaData?.pan_card_definition;
+                else docDef = loanSchemaData?.document_definitions?.[clearedDocTypeKey];
+                const docLabel = docDef?.label || clearedDocTypeKey;
+
+                if (autoFillError.includes(docLabel)) setAutoFillError("");
+
+                if (clearedDocTypeKey === 'aadhaar_card') {
+                    setAadhaarPhotoIdForVerification(null);
+                    setIsFaceVerificationComplete(false);
+                    setShowFaceVerificationModule(false);
+                    setFaceVerificationError("");
+                }
+            }
+        }
+     }, [triggerEntityExtraction, formData, autoFilledFields, autoFillError, loanSchemaData]);
+
+    const handleFaceVerificationResult = useCallback((success, errorMsg = "") => {
+        setIsFaceVerificationComplete(success);
+        if (success) {
+            console.log("Face verification successful!");
+            setFaceVerificationError("");
+            runFullValidation(showValidationErrors);
+        } else {
+            console.error("Face verification failed or was cancelled.");
+            setFaceVerificationError(errorMsg || "Face verification failed or was cancelled by user. Please try again.");
+        }
+    }, [showValidationErrors, runFullValidation]);
+
+    const handleAnnexureFileChange = (event) => {
+        const file = event.target.files ? event.target.files[0] : null;
+        if (file) {
+            if (file.type === "application/pdf") {
+                setAnnexureFile(file);
+                setAnnexureFileError("");
+                setExistingAnnexureFileRef(null); 
+                runFullValidation(showValidationErrors);
             } else {
-                setDocValidationStatus(prev => ({ ...prev, [docDisplayName]: { status: 'error', message: errorMsg } }));
-                setApiError(`Error fetching data for ${docDisplayName}: ${errorMsg}`);
+                setAnnexureFile(null);
+                setAnnexureFileError("Invalid file type. Please upload a PDF annexure.");
             }
+        } else {
+            setAnnexureFile(null);
+            runFullValidation(showValidationErrors);
         }
-    }, [loanSchemaData, mainFormData]); 
+    };
 
 
-    // Handles file changes for KYC documents (Aadhaar/PAN)
-    const handleKycFileChange = useCallback((sectionName, fieldId, file) => { 
-        const setSectionFiles = sectionName === 'aadhaar' ? setAadhaarFieldFiles : setPanFieldFiles;
-        setSectionFiles(prev => file ? { ...prev, [fieldId]: file } : (({ [fieldId]: _, ...rest }) => rest)(prev));
-        setExistingFileRefs(prev => (({ [`${sectionName}_${fieldId}`]: _, ...rest }) => rest)(prev));
-        setDraftSaveStatus(prev => ({ ...prev, saved: false, message: '' }));
+    const handleSaveDraft = async () => {
+        if (isSavingDraft || isSubmitting) return; setShowValidationErrors(true); 
+        const draftErrors = {}; let isDraftValid = true; if (!formData.amount || isNaN(formData.amount) || Number(formData.amount) <= 0) { draftErrors['amount'] = 'A valid amount is needed to save draft.'; isDraftValid = false; }
+        setFormErrors(prev => ({ ...prev, ...draftErrors }));
+        if (!isDraftValid) { alert('Please enter at least the Loan Amount to save a draft.'); return; }
+        setFormErrors(prev => { const n = {...prev}; if(Object.keys(draftErrors).includes('amount')) delete n['amount']; return n; });
 
-        const docDef = sectionName === 'aadhaar' ? aadhaarSchemaDef : panSchemaDef;
-        if (docDef && file) {
-            const primaryImageField = docDef.fields.find(f => f.type === 'image' || f.type === 'document'); 
-            if (primaryImageField && fieldId === primaryImageField.key) {
-                triggerEntityExtraction(docDef.name, file, docDef);
-            }
-        }
-    }, [aadhaarSchemaDef, panSchemaDef, triggerEntityExtraction]); 
-
-
-    // Validates a single section of the form
-    const validateSection = useCallback((sectionName, schemaDef, sectionData, sectionFilesState) => {
-        const errors = {};
-        if (!schemaDef || !schemaDef.fields) return errors;
-    
-        schemaDef.fields.forEach(field => {
-            const fieldKey = field.key || field.field_id;
-            const value = sectionData[fieldKey];
-            const isFileField = field.type === 'image' || field.type === 'document';
-    
-            if (field.required) {
-                if (isFileField) {
-                    const hasNewFile = sectionFilesState[fieldKey];
-                    const hasExistingFile = existingFileRefs[`${sectionName}_${fieldKey}`];
-                    if (!hasNewFile && !hasExistingFile) {
-                        errors[fieldKey] = `${field.label || field.field_label} is required.`;
-                    }
-                } else if (value === null || value === undefined || String(value).trim() === '') {
-                    errors[fieldKey] = `${field.label || field.field_label} is required.`;
-                } else if (field.type === 'checkbox' && !value) {
-                    errors[fieldKey] = `${field.label || field.field_label} must be checked.`;
-                }
-            }
-    
-            if (field.type === 'number' && value !== null && value !== undefined && String(value).trim() !== '') {
-                const numValue = Number(value);
-                if (isNaN(numValue)) {
-                    errors[fieldKey] = `${field.label || field.field_label} must be a valid number.`;
-                } else {
-                    if (field.min_value !== null && field.min_value !== undefined && numValue < field.min_value) {
-                        errors[fieldKey] = `${field.label || field.field_label} must be at least ${field.min_value}.`;
-                    }
-                    if (field.max_value !== null && field.max_value !== undefined && numValue > field.max_value) {
-                        errors[fieldKey] = `${field.label || field.field_label} cannot exceed ${field.max_value}.`;
-                    }
-                }
-            }
-        });
-        return errors;
-    }, [existingFileRefs]); 
-    
-
-    // Runs validation for the entire form
-    const runFullValidation = useCallback((showErrors = false) => {
-        if (!loanSchemaData || !aadhaarSchemaDef || !panSchemaDef) {
-            console.warn("Schemas not loaded, validation skipped.");
-            return false;
-        }
-        const allErrors = {};
-        let overallIsValid = true;
-
-        const mainLoanCombinedSchema = { fields: [
-            { field_id: 'amount', field_label: 'Loan Amount', type: 'number', required: true, min_value: loanSchemaData.min_amount, max_value: loanSchemaData.max_amount },
-            ...(loanSchemaData.fields || [])
-        ]};
-        const mainLoanErrors = validateSection('mainLoan', mainLoanCombinedSchema, mainFormData, customFieldFiles);
-        if (Object.keys(mainLoanErrors).length > 0) { allErrors.mainLoan = mainLoanErrors; overallIsValid = false; }
-
-        const aadhaarErrors = validateSection('aadhaar', aadhaarSchemaDef, aadhaarFormData, aadhaarFieldFiles);
-        if (Object.keys(aadhaarErrors).length > 0) { allErrors.aadhaar = aadhaarErrors; overallIsValid = false; }
-        
-        const aadhaarPrimaryDocField = aadhaarSchemaDef.fields.find(f => f.type === 'image' || f.type === 'document');
-        const aadhaarFileKey = aadhaarPrimaryDocField?.key || 'card_image'; 
-        const hasAadhaarFileForValidation = aadhaarFieldFiles[aadhaarFileKey] || existingFileRefs[`aadhaar_${aadhaarFileKey}`];
-        const aadhaarStatus = docValidationStatus[aadhaarSchemaDef.name]?.status;
-
-        if (hasAadhaarFileForValidation && aadhaarStatus !== 'verified_db_match' && aadhaarStatus !== 'submitted') {
-            if (aadhaarStatus === 'db_data_mismatch' || aadhaarStatus === 'db_match_not_found' || aadhaarStatus === 'error' || aadhaarStatus === 'unique_id_missing_from_image') { 
-                 allErrors.aadhaar = { ...allErrors.aadhaar, _general: docValidationStatus[aadhaarSchemaDef.name]?.message || `${aadhaarSchemaDef.name} requires attention. Please review or fill manually.` };
-                 overallIsValid = false; 
-            } else if (aadhaarStatus) { 
-                 allErrors.aadhaar = { ...allErrors.aadhaar, _general: `${aadhaarSchemaDef.name} document is still processing.` };
-                 overallIsValid = false; 
-            }
-        } else if (!hasAadhaarFileForValidation && aadhaarPrimaryDocField?.required && !allErrors.aadhaar?.[aadhaarFileKey]) {
-            allErrors.aadhaar = { ...allErrors.aadhaar, [aadhaarFileKey]: `${aadhaarPrimaryDocField.label || aadhaarSchemaDef.name} document image is required.` };
-            overallIsValid = false;
-        }
-        
-        const panErrors = validateSection('pan', panSchemaDef, panFormData, panFieldFiles);
-        if (Object.keys(panErrors).length > 0) { allErrors.pan = panErrors; overallIsValid = false; }
-
-        const panPrimaryDocField = panSchemaDef.fields.find(f => f.type === 'image' || f.type === 'document');
-        const panFileKey = panPrimaryDocField?.key || 'card_image';
-        const hasPanFileForValidation = panFieldFiles[panFileKey] || existingFileRefs[`pan_${panFileKey}`];
-        const panStatus = docValidationStatus[panSchemaDef.name]?.status;
-
-        if (hasPanFileForValidation && panStatus !== 'verified_db_match' && panStatus !== 'submitted') {
-             if (panStatus === 'db_data_mismatch' || panStatus === 'db_match_not_found' || panStatus === 'error' || panStatus === 'unique_id_missing_from_image') {
-                 allErrors.pan = { ...allErrors.pan, _general: docValidationStatus[panSchemaDef.name]?.message || `${panSchemaDef.name} requires attention. Please review or fill manually.` };
-                 overallIsValid = false; 
-             } else if (panStatus) {
-                 allErrors.pan = { ...allErrors.pan, _general: `${panSchemaDef.name} document is still processing.` };
-                 overallIsValid = false;
-             }
-        } else if (!hasPanFileForValidation && panPrimaryDocField?.required && !allErrors.pan?.[panFileKey]) {
-            allErrors.pan = { ...allErrors.pan, [panFileKey]: `${panPrimaryDocField.label || panSchemaDef.name} document image is required.` };
-            overallIsValid = false;
-        }
-
-        const otherDocsErrors = {};
-        (loanSchemaData.required_documents || []).forEach(doc => {
-            if (doc.name.toLowerCase() === aadhaarSchemaDef.name.toLowerCase() || doc.name.toLowerCase() === panSchemaDef.name.toLowerCase()) return;
-            const docNameKey = doc.name.replace(/\s+/g, '_');
-            if (!otherRequiredDocFiles[docNameKey] && !existingFileRefs[`otherDoc_${docNameKey}`]) {
-                otherDocsErrors[docNameKey] = `${doc.name} is required.`;
-                overallIsValid = false;
-            }
-        });
-        if (Object.keys(otherDocsErrors).length > 0) allErrors.otherRequiredDocs = otherDocsErrors;
-
-        if (showErrors) setFormErrors(allErrors);
-        setIsFormValidForSubmit(overallIsValid);
-        return overallIsValid;
-    }, [loanSchemaData, aadhaarSchemaDef, panSchemaDef, mainFormData, aadhaarFormData, panFormData, customFieldFiles, aadhaarFieldFiles, panFieldFiles, otherRequiredDocFiles, existingFileRefs, docValidationStatus, validateSection]);
-
-
-    // Effect to re-run validation when relevant data changes
-    useEffect(() => {
-        if (loanSchemaData && aadhaarSchemaDef && panSchemaDef) { 
-            runFullValidation(showValidationErrors); 
-        }
-    }, [loanSchemaData, aadhaarSchemaDef, panSchemaDef, mainFormData, aadhaarFormData, panFormData, customFieldFiles, aadhaarFieldFiles, panFieldFiles, otherRequiredDocFiles, existingFileRefs, docValidationStatus, showValidationErrors, runFullValidation]);
-
-
-    // Handles the final form submission
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setApiError(''); setAutoFillError('');
-        setDraftSaveStatus(prev => ({ ...prev, saved: false, message: '' }));
-        setShowValidationErrors(true); 
-
-        if (!runFullValidation(true)) {
-            const firstErrorElement = formRef.current?.querySelector('.is-invalid, .is-invalid-doc, .alert-danger[role="alert"]');
-            if (firstErrorElement) {
-                firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-            setApiError("Please correct the errors highlighted in the form before submitting.");
-            return;
-        }
-        
-        setIsSubmitting(true);
-        setSubmissionStatus('submitting_kyc');
-
-        let currentAadhaarSubmissionId = docValidationStatus[aadhaarSchemaDef.name]?.submissionId || null;
-        let currentPanSubmissionId = docValidationStatus[panSchemaDef.name]?.submissionId || null;
-
+        setIsSavingDraft(true); setApiError(""); console.log("Saving draft...");
         try {
-            // Step 1: Submit Aadhaar GovDocument Data (if not already submitted or if files changed)
-            if (!currentAadhaarSubmissionId || Object.keys(aadhaarFieldFiles).length > 0) {
-                const aadhaarApiFormData = new FormData();
-                aadhaarApiFormData.append('schema_definition_id', aadhaarSchemaDef._id);
-                aadhaarApiFormData.append('fieldsData', JSON.stringify(
-                    aadhaarSchemaDef.fields.map(f => ({ field_id: f.key, field_label: f.label, type: f.type, value: aadhaarFormData[f.key] }))
-                ));
-                for (const fieldKey in aadhaarFieldFiles) {
-                    if (aadhaarFieldFiles[fieldKey]) aadhaarApiFormData.append(fieldKey, aadhaarFieldFiles[fieldKey]);
+            const payloadFields = loanSchemaData.fields.map(f => ({ field_id: f.field_id, field_label: f.field_label, type: f.type, value: (f.type === 'image' || f.type === 'document') ? (existingFileRefs[f.field_id] || (customFieldFiles[f.field_id] ? `local:${customFieldFiles[f.field_id].name}`: '')) : (formData[f.field_id] || '') }));
+            
+            const requiredDocRefsPayload = [];
+            const aadhaarRefKey = 'reqDoc_aadhaar_card';
+            if (existingFileRefs[aadhaarRefKey] || requiredDocFiles['aadhaar_card']) {
+                requiredDocRefsPayload.push({ documentTypeKey: 'aadhaar_card', fileRef: existingFileRefs[aadhaarRefKey] || `local:${requiredDocFiles['aadhaar_card']?.name}`});
+            }
+            const panRefKey = 'reqDoc_pan_card';
+            if (existingFileRefs[panRefKey] || requiredDocFiles['pan_card']) {
+                requiredDocRefsPayload.push({ documentTypeKey: 'pan_card', fileRef: existingFileRefs[panRefKey] || `local:${requiredDocFiles['pan_card']?.name}`});
+            }
+            loanSchemaData.required_documents
+                .filter(doc => doc.name !== 'aadhaar_card' && doc.name !== 'pan_card')
+                .forEach(doc => {
+                    const refKey = `reqDoc_${doc.name}`;
+                    if (existingFileRefs[refKey] || requiredDocFiles[doc.name]) {
+                        requiredDocRefsPayload.push({ documentTypeKey: doc.name, fileRef: existingFileRefs[refKey] || `local:${requiredDocFiles[doc.name]?.name}`});
+                    }
+                });
+            
+            const payload = { 
+                amount: Number(formData.amount) || 0, 
+                fields: payloadFields, 
+                requiredDocumentRefs: requiredDocRefsPayload.filter(ref => ref.fileRef), 
+                autoFilledFields: autoFilledFields,
+                annexureDocumentRef: existingAnnexureFileRef || (annexureFile ? `local:${annexureFile.name}` : null) 
+            };
+            await axiosInstance.post(`/api/application/${loanId}/submissions/draft`, payload);
+            setDraftSaveStatus({ saved: true, time: new Date() });
+            setTimeout(() => setDraftSaveStatus({ saved: false, time: null }), 3000);
+            console.log("Draft saved.");
+        } catch (err) { console.error("Error saving draft:", err); setApiError(err.response?.data?.error || "Draft save failed."); }
+        finally { setIsSavingDraft(false); }
+     };
+
+
+   const handleSubmit = (e) => {
+       e.preventDefault(); setApiError(""); setAutoFillError(""); setShowValidationErrors(true);
+       if(runFullValidation(true)) {
+           submitApplication();
+        } else {
+            console.log("Form validation failed on submit.", formErrors);
+            alert("Please fill all required fields, upload/verify required documents, complete face verification, and resolve any data mismatches (or provide an annexure if applicable) before submitting.");
+            const errorKeys = Object.keys(formErrors);
+            if (errorKeys.length > 0) {
+                const firstErrorKey = errorKeys[0];
+                let selector = `[id="${firstErrorKey}"], [id="custom_${firstErrorKey}"]`; 
+                if (firstErrorKey.startsWith('reqDoc_') || firstErrorKey === 'face_verification' || firstErrorKey === 'annexure') {
+                    selector = `[id="${firstErrorKey}"]`; 
                 }
-                const aadhaarRes = await axiosInstance.post('/api/document/submission', aadhaarApiFormData, { headers: { 'Content-Type': 'multipart/form-data' } });
-                currentAadhaarSubmissionId = aadhaarRes.data.submissionId;
-                setDocValidationStatus(prev => ({ ...prev, [aadhaarSchemaDef.name]: { ...prev[aadhaarSchemaDef.name], status: 'submitted', submissionId: currentAadhaarSubmissionId } }));
-                setAadhaarFieldFiles({}); 
+                const element = formRef.current?.querySelector(selector);
+                if (element) {
+                    element.focus({ preventScroll: true });
+                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else {
+                    window.scrollTo(0,0);
+                }
+            } else {
+                 window.scrollTo(0,0); 
+            }
+        }
+   };
+
+   const submitApplication = async () => {
+        if (isSubmitting) return; setIsSubmitting(true); setApiError(""); console.log("Submitting application...");
+        try {
+            const filesToUpload = [];
+            Object.entries(customFieldFiles).forEach(([fieldId, file]) => { if (!existingFileRefs[fieldId]) { filesToUpload.push({ key: fieldId, file: file, type: 'custom' }); } });
+            
+            if (requiredDocFiles['aadhaar_card'] && !existingFileRefs['reqDoc_aadhaar_card']) {
+                filesToUpload.push({ key: 'reqDoc_aadhaar_card', file: requiredDocFiles['aadhaar_card'], type: 'required', docTypeKey: 'aadhaar_card' });
+            }
+            if (requiredDocFiles['pan_card'] && !existingFileRefs['reqDoc_pan_card']) {
+                filesToUpload.push({ key: 'reqDoc_pan_card', file: requiredDocFiles['pan_card'], type: 'required', docTypeKey: 'pan_card' });
             }
 
-            // Step 2: Submit PAN GovDocument Data (if not already submitted or if files changed)
-            if (!currentPanSubmissionId || Object.keys(panFieldFiles).length > 0) {
-                const panApiFormData = new FormData();
-                panApiFormData.append('schema_definition_id', panSchemaDef._id);
-                panApiFormData.append('fieldsData', JSON.stringify(
-                    panSchemaDef.fields.map(f => ({ field_id: f.key, field_label: f.label, type: f.type, value: panFormData[f.key] }))
-                ));
-                for (const fieldKey in panFieldFiles) {
-                    if (panFieldFiles[fieldKey]) panApiFormData.append(fieldKey, panFieldFiles[fieldKey]);
-                }
-                const panRes = await axiosInstance.post('/api/document/submission', panApiFormData, { headers: { 'Content-Type': 'multipart/form-data' } });
-                currentPanSubmissionId = panRes.data.submissionId;
-                setDocValidationStatus(prev => ({ ...prev, [panSchemaDef.name]: { ...prev[panSchemaDef.name], status: 'submitted', submissionId: currentPanSubmissionId } }));
-                setPanFieldFiles({}); 
+            loanSchemaData.required_documents
+                .filter(doc => doc.name !== 'aadhaar_card' && doc.name !== 'pan_card')
+                .forEach(doc => {
+                    const docTypeKey = doc.name;
+                    const refKey = `reqDoc_${docTypeKey}`;
+                    if (requiredDocFiles[docTypeKey] && !existingFileRefs[refKey]) {
+                        filesToUpload.push({ key: refKey, file: requiredDocFiles[docTypeKey], type: 'required', docTypeKey: docTypeKey });
+                    }
+                });
+            
+            if (annexureFile && !existingAnnexureFileRef) {
+                filesToUpload.push({ key: 'annexure_document', file: annexureFile, type: 'annexure' });
             }
 
-            setSubmissionStatus('submitting_loan');
 
-            // Step 3: Upload other files (custom fields, other required docs)
-            const uploadedFileRefsForLoan = { ...existingFileRefs };
-            const filesToUploadForLoan = [];
-            Object.entries(customFieldFiles).forEach(([fieldId, file]) => {
-                if (!existingFileRefs[`mainLoan_${fieldId}`]) filesToUploadForLoan.push({ key: `mainLoan_${fieldId}`, file, type: 'custom', field_id: fieldId });
-            });
-            Object.entries(otherRequiredDocFiles).forEach(([docNameKey, file]) => {
-                if (!existingFileRefs[`otherDoc_${docNameKey}`]) filesToUploadForLoan.push({ key: `otherDoc_${docNameKey}`, file, type: 'required', docName: docNameKey.replace(/_/g, ' ') });
-            });
+            const uploadedFileRefs = { ...existingFileRefs }; 
+            if (existingAnnexureFileRef) { 
+                uploadedFileRefs['annexure_document'] = existingAnnexureFileRef;
+            }
+            console.log("Files needing upload:", filesToUpload);
 
-            await Promise.all(filesToUploadForLoan.map(async ({ key, file, type, field_id, docName }) => {
-                const fileUploadFormData = new FormData();
-                fileUploadFormData.append("file", file);
+
+            const uploadPromises = filesToUpload.map(async ({ key, file, type, docTypeKey }) => {
+                const fieldSchema = type === 'custom' ? loanSchemaData?.fields.find(f => f.field_id === key) : null;
+                let docDefForLabel;
+                if (type === 'required') {
+                    if (docTypeKey === 'aadhaar_card') docDefForLabel = loanSchemaData?.aadhaar_card_definition;
+                    else if (docTypeKey === 'pan_card') docDefForLabel = loanSchemaData?.pan_card_definition;
+                    else docDefForLabel = loanSchemaData?.document_definitions?.[docTypeKey];
+                }
+                const docLabel = type === 'annexure' ? 'Annexure Document' : (type === 'required' ? (docDefForLabel?.label || docTypeKey) : (fieldSchema?.field_label || key.replace('reqDoc_','')));
+
+                const fileType = fieldSchema?.type || (type === 'annexure' ? 'document' : 'document'); 
+                const uploadUrl = "/api/image"; 
+                console.log(`Uploading ${fileType} for ${docLabel} (key: ${key})...`);
+                const fileFormData = new FormData(); fileFormData.append("file", file); 
                 try {
-                    const { data: uploadResult } = await axiosInstance.post("/api/file", fileUploadFormData, { headers: { "Content-Type": "multipart/form-data" } });
-                    uploadedFileRefsForLoan[key] = uploadResult.id; 
+                    const { data: uploadResult } = await axiosInstance.post(uploadUrl, fileFormData, { headers: { "Content-Type": "multipart/form-data" } });
+                    if (!uploadResult || !uploadResult.id) { // Explicit check for ID
+                        console.error(`Upload for ${key} did not return a valid ID. Response:`, uploadResult);
+                        throw new Error(`File ID missing after uploading ${docLabel}.`);
+                    }
+                    uploadedFileRefs[key] = uploadResult.id; 
+                    console.log(`Upload success for ${key}: ${uploadedFileRefs[key]}`);
                 } catch (uploadError) {
                     console.error(`Failed to upload file for ${key}:`, uploadError);
-                    throw new Error(`Failed to upload ${type === 'custom' && loanSchemaData?.fields ? loanSchemaData.fields.find(f => f.field_id === field_id)?.field_label : docName}. ${uploadError.response?.data?.error || ''}`);
+                    throw new Error(`Failed to upload ${docLabel}. ${uploadError.response?.data?.error || uploadError.response?.data?.message || uploadError.message}`);
                 }
-            }));
-            
-            // Step 4: Construct and Submit Final Loan Application
-            const finalLoanFields = loanSchemaData.fields.map(f => ({
-                field_id: f.field_id, field_label: f.label, type: f.type,
-                value: (f.type !== 'image' && f.type !== 'document') ? (mainFormData[f.field_id] || '') : null,
-                fileRef: (f.type === 'image' || f.type === 'document') ? (uploadedFileRefsForLoan[`mainLoan_${f.field_id}`] || null) : undefined
-            }));
-            const finalOtherRequiredDocs = (loanSchemaData.required_documents || [])
-                .filter(doc => aadhaarSchemaDef && panSchemaDef && doc.name.toLowerCase() !== aadhaarSchemaDef.name.toLowerCase() && doc.name.toLowerCase() !== panSchemaDef.name.toLowerCase())
-                .map(doc => ({ documentName: doc.name, fileRef: uploadedFileRefsForLoan[`otherDoc_${doc.name.replace(/\s+/g, '_')}`] || null }))
-                .filter(ref => ref.fileRef);
+            });
+            await Promise.all(uploadPromises); console.log("All new files uploaded. Final File Refs:", uploadedFileRefs);
 
-            const loanSubmissionPayload = {
-                amount: Number(mainFormData.amount),
-                aadhaar_document_submission_id: currentAadhaarSubmissionId,
-                pan_document_submission_id: currentPanSubmissionId,
-                fields: finalLoanFields,
-                requiredDocumentRefs: finalOtherRequiredDocs
-            };
+            const finalSubmissionFields = loanSchemaData.fields.map(f => {
+                let value = formData[f.field_id] || '';
+                if (f.type === 'date' && value) {
+                    value = formatDateToDDMMYYYY(value); 
+                }
+                return { 
+                    field_id: f.field_id, 
+                    field_label: f.field_label, 
+                    type: f.type, 
+                    value: (f.type !== 'image' && f.type !== 'document') ? value : null, 
+                    fileRef: (f.type === 'image' || f.type === 'document') ? (uploadedFileRefs[f.field_id] || null) : undefined 
+                };
+            });
             
-            const { data: submissionResult } = await axiosInstance.post(`/api/application/${loanId}/submissions`, loanSubmissionPayload);
-            setFinalLoanSubmissionId(submissionResult._id || submissionResult.id);
+            const finalRequiredDocsRefs = [];
+            if (uploadedFileRefs['reqDoc_aadhaar_card']) finalRequiredDocsRefs.push({ documentTypeKey: 'aadhaar_card', fileRef: uploadedFileRefs['reqDoc_aadhaar_card'] });
+            if (uploadedFileRefs['reqDoc_pan_card']) finalRequiredDocsRefs.push({ documentTypeKey: 'pan_card', fileRef: uploadedFileRefs['reqDoc_pan_card'] });
+            loanSchemaData.required_documents
+                .filter(doc => doc.name !== 'aadhaar_card' && doc.name !== 'pan_card')
+                .forEach(doc => {
+                    const key = `reqDoc_${doc.name}`;
+                    if (uploadedFileRefs[key]) {
+                        finalRequiredDocsRefs.push({ documentTypeKey: doc.name, fileRef: uploadedFileRefs[key] });
+                    }
+                });
+
+            const aadhaarDataForPayload = {};
+            const panDataForPayload = {};
+
+            loanSchemaData.fields.forEach(field => {
+                if (field.auto_fill_sources && field.auto_fill_sources.length > 0) {
+                    field.auto_fill_sources.forEach(sourceString => {
+                        const docTypeKey = sourceString.split('.')[0];
+                        const sourceFieldKey = getFieldKeyFromSource(sourceString);
+                        let currentFormFieldValue = formData[field.field_id];
+
+                        if (field.type === 'date' && currentFormFieldValue) {
+                            currentFormFieldValue = formatDateToDDMMYYYY(currentFormFieldValue);
+                        }
+
+                        if (docTypeKey === 'aadhaar_card' && sourceFieldKey) {
+                            aadhaarDataForPayload[sourceFieldKey] = currentFormFieldValue;
+                        } else if (docTypeKey === 'pan_card' && sourceFieldKey) {
+                            panDataForPayload[sourceFieldKey] = currentFormFieldValue;
+                        }
+                    });
+                }
+            });
+
+
+            const submissionPayload = { 
+                amount: Number(formData.amount), 
+                fields: finalSubmissionFields, 
+                requiredDocumentRefs: finalRequiredDocsRefs, 
+                isFaceVerified: isFaceVerificationComplete,
+                annexureDocumentRef: uploadedFileRefs['annexure_document'] || null 
+            }; 
+            if (Object.keys(aadhaarDataForPayload).length > 0) {
+                submissionPayload.aadhaar_data = aadhaarDataForPayload;
+            }
+            if (Object.keys(panDataForPayload).length > 0) {
+                submissionPayload.pan_data = panDataForPayload;
+            }
+
+            console.log("Final Submission Payload:", submissionPayload);
+            const { data: submissionResult } = await axiosInstance.post(`/api/application/${loanId}/submissions`, submissionPayload);
+            const newId = submissionResult._id || submissionResult.id; setSubmissionId(newId); console.log("Submission successful:", newId);
             setSubmissionStatus('submitted');
-            setCustomFieldFiles({}); 
-            setOtherRequiredDocFiles({}); 
-
         } catch (err) {
-            console.error("Submission process failed:", err);
-            setApiError(err.message || err.response?.data?.error || "Submission failed. Please try again.");
-            setSubmissionStatus('filling'); 
-        } finally {
-            setIsSubmitting(false);
+            console.error("Submission failed:", err); setApiError(err.message || err.response?.data?.error || err.response?.data?.message || "Submission failed. Please try again."); setSubmissionStatus('filling'); window.scrollTo(0, 0);
         }
+        finally { setIsSubmitting(false); }
     };
-    
-    // Handles saving the form as a draft
-    const handleSaveDraft = async () => {
-        setIsSavingDraft(true);
-        setDraftSaveStatus({ saved: false, error: null, message: 'Saving draft...' });
-        setApiError('');
-            
-        const draftPayload = {
-            loan_id: loanId,
-            amount: mainFormData.amount,
-            fields: loanSchemaData?.fields?.map(f => ({ 
-                field_id: f.field_id,
-                value: mainFormData[f.field_id],
-                fileRef: (f.type === 'image' || f.type === 'document') ? existingFileRefs[`mainLoan_${f.field_id}`] : undefined
-            })) || [],
-            aadhaarFormData: aadhaarFormData, 
-            panFormData: panFormData,       
-            fileReferences: { ...existingFileRefs }, 
-            docValidationStatus: docValidationStatus, 
-            autoFilledFields: autoFilledFields,
-            kycAutoFilledFields: kycAutoFilledFields, 
-        };
-    
-        try {
-            console.log("Saving draft with payload:", draftPayload);
-            await axiosInstance.post(`/api/application/${loanId}/submissions/draft`, draftPayload);
-            setDraftSaveStatus({ saved: true, error: null, message: 'Draft saved successfully!' });
-        } catch (err) {
-            console.error("Error saving draft:", err);
-            const errMsg = err.response?.data?.error || err.message || 'Failed to save draft.';
-            setDraftSaveStatus({ saved: false, error: true, message: `Failed to save draft: ${errMsg}` });
-        } finally {
-            setIsSavingDraft(false);
+
+    // Helper to render a single required document item (used for Aadhaar, PAN, and others)
+    const renderRequiredDocumentItem = (docTypeKey, isMandatoryFixed = false) => {
+        let docDefinition;
+        let docDisplayLabel;
+        let docDescription;
+
+        if (docTypeKey === 'aadhaar_card') {
+            docDefinition = loanSchemaData?.aadhaar_card_definition;
+            docDisplayLabel = docDefinition?.label || "Aadhaar Card";
+            docDescription = docDefinition?.description || "Upload your Aadhaar Card (front and back if applicable, as a single file or ensure all details are clear).";
+        } else if (docTypeKey === 'pan_card') {
+            docDefinition = loanSchemaData?.pan_card_definition;
+            docDisplayLabel = docDefinition?.label || "PAN Card";
+            docDescription = docDefinition?.description || "Upload your PAN Card.";
+        } else {
+            // For other documents from loanSchemaData.required_documents
+            const reqDocEntry = loanSchemaData.required_documents.find(d => d.name === docTypeKey);
+            docDefinition = loanSchemaData.document_definitions?.[docTypeKey];
+            docDisplayLabel = docDefinition?.label || reqDocEntry?.name || docTypeKey;
+            docDescription = reqDocEntry?.description || docDefinition?.description;
         }
-    };
-    
-    // --- Render Logic ---
-    if (loading) {
-        return <Container fluid className="d-flex justify-content-center align-items-center" style={{ minHeight: '80vh' }}><Spinner animation="border" variant="primary" style={{ width: '3rem', height: '3rem' }} /><p className="ms-3 fs-5 text-muted">Loading Application Setup...</p></Container>;
-    }
-    if (apiError && !loanSchemaData && !isSubmitting && submissionStatus !== 'submitted') {
-        return <Container className="mt-5"><Alert variant="danger">Critical Error: {apiError.split('\n').map((line, i) => <span key={i}>{line}<br/></span>)}</Alert></Container>;
-    }
-    if (!loanSchemaData || !aadhaarSchemaDef || !panSchemaDef) {
+
+        if (!docDefinition && isMandatoryFixed) { 
+            return (
+                <ListGroup.Item key={docTypeKey} className="required-doc-item p-3 border rounded mb-3">
+                    <Alert variant="warning">Configuration for {docDisplayLabel} is missing. Please contact support.</Alert>
+                </ListGroup.Item>
+            );
+        }
+
+
+        const inputIdAndRefKeyPart = `reqDoc_${docTypeKey}`;
+        const docStatusInfo = docValidationStatus[docTypeKey];
+        const hasExisting = !!existingFileRefs[inputIdAndRefKeyPart];
+        const hasNew = !!requiredDocFiles[docTypeKey];
+        const fileInputError = formErrors[inputIdAndRefKeyPart];
+        
+        let showItemError = false;
+        if (showValidationErrors) {
+            if (fileInputError) { 
+                showItemError = true;
+            } else if (docStatusInfo?.status === 'error') {
+                const allMismatchesAnnexureEligible = docStatusInfo.mismatches?.every(
+                    mm => ANNEXURE_ELIGIBLE_FIELD_LABELS.includes(mm.fieldLabel)
+                );
+                if (!allMismatchesAnnexureEligible) { 
+                    showItemError = true;
+                } else if (allMismatchesAnnexureEligible && !(annexureFile || existingAnnexureFileRef)) {
+                    showItemError = true; 
+                }
+            } else if (docStatusInfo?.status && docStatusInfo.status !== 'verified' && (hasExisting || hasNew)) {
+                 showItemError = true;
+            }
+        }
+
+
+        const isTypeMismatch = docStatusInfo?.status === 'error' && docStatusInfo.mismatches?.[0]?.fieldLabel === 'Document Type Mismatch';
+
         return (
-            <Container className="mt-5">
-                <Alert variant="warning">
-                    <Alert.Heading><FaExclamationTriangle className="me-2" />Application Setup Incomplete</Alert.Heading>
-                    <p>Required document definitions (Aadhaar/PAN) could not be loaded. Please ensure schemas with IDs '<code>{AADHAAR_SCHEMA_ID_CONST}</code>' and '<code>{PAN_SCHEMA_ID_CONST}</code>' are defined by the admin.</p>
-                    {apiError && !loading && <><hr /><p className="mb-0 small">{apiError.split('\n').map((line, i) => <span key={i}>{line}<br/></span>)}</p></>}
-                </Alert>
-            </Container>
+            <ListGroup.Item key={docTypeKey} className={`required-doc-item p-3 border rounded mb-3 ${showItemError ? 'doc-item-invalid' : ''} ${isTypeMismatch ? 'doc-item-typemismatch' : ''}`}>
+                <Row className="align-items-center g-2">
+                    <Col md={4} className="doc-info">
+                        <strong className="d-block">{docDisplayLabel} *</strong>
+                        {docDescription && <small className="text-muted d-block">{docDescription}</small>}
+                    </Col>
+                    <Col md={hasNew || hasExisting ? 4 : 5} className="doc-input">
+                        <Form.Control
+                            type="file"
+                            id={inputIdAndRefKeyPart}
+                            onChange={(e) => handleRequiredDocFileChangeCallback(docTypeKey, e.target.files ? e.target.files[0] : null)}
+                            disabled={isSubmitting || isSavingDraft || docStatusInfo?.status === 'validating'}
+                            isInvalid={showValidationErrors && !!fileInputError && !hasNew && !hasExisting && !docStatusInfo } // Original isInvalid condition
+                            size="sm" className="document-file-input"
+                        />
+                        {hasExisting && !hasNew && <small className='text-success d-block mt-1'><FaCheckCircle size={12} className="me-1"/>Current file: {decodeURIComponent(new URL(existingFileRefs[inputIdAndRefKeyPart]).pathname.split('/').pop() || existingFileRefs[inputIdAndRefKeyPart]).substring(0,20)}...</small>}
+                        {hasNew && <small className='text-info d-block mt-1'><FaFileUpload size={12} className="me-1"/>New: {requiredDocFiles[docTypeKey]?.name}</small>}
+                        {showValidationErrors && fileInputError && !hasNew && !hasExisting && !docStatusInfo && <Form.Text className="text-danger d-block mt-1">{fileInputError}</Form.Text>}
+                    </Col>
+                    <Col md={3} className="doc-status text-md-end"> {getDocStatusBadge(docTypeKey)} </Col>
+                    <Col md={hasNew || hasExisting ? 1 : "auto"} className="doc-actions text-end">
+                        {(hasNew || hasExisting) && !(docStatusInfo?.status === 'validating') && (
+                            <Button
+                                variant="outline-danger" size="sm"
+                                onClick={() => {
+                                    const inputElement = document.getElementById(inputIdAndRefKeyPart);
+                                    if (inputElement) inputElement.value = "";
+                                    handleRequiredDocFileChangeCallback(docTypeKey, null);
+                                }}
+                                title={`Remove ${docDisplayLabel}`} className="p-1">
+                                <FaTrash size={12} />
+                            </Button>
+                        )}
+                    </Col>
+                </Row>
+                    {(docStatusInfo?.status === 'error' || isTypeMismatch) && docStatusInfo.mismatches && (
+                    <Alert variant={isTypeMismatch ? "danger" : "warning"} className="mismatches mt-2 p-2 small">
+                        {isTypeMismatch ? (
+                            <> <strong className="d-block mb-1"><FileWarning size={14} className="me-1"/> Incorrect Document Type:</strong>
+                                Expected <strong>{ (docTypeKey === 'aadhaar_card' ? loanSchemaData?.aadhaar_card_definition?.label : (docTypeKey === 'pan_card' ? loanSchemaData?.pan_card_definition?.label : loanSchemaData.document_definitions?.[docStatusInfo.mismatches[0]?.expected]?.label)) || docStatusInfo.mismatches[0]?.expected}</strong>,
+                                but uploaded document appears to be <strong>{(docStatusInfo.mismatches[0]?.actual === 'aadhaar_card' ? loanSchemaData?.aadhaar_card_definition?.label : (docStatusInfo.mismatches[0]?.actual === 'pan_card' ? loanSchemaData?.pan_card_definition?.label : loanSchemaData.document_definitions?.[docStatusInfo.mismatches[0]?.actual]?.label)) || docStatusInfo.mismatches[0]?.actual || 'Unknown'}</strong>.
+                                Please upload the correct document. </>
+                        ) : (
+                            <> <strong className="d-block mb-1"><FaExclamationTriangle size={14} className="me-1"/> Data Discrepancy:</strong>
+                            {docStatusInfo.mismatches.map((mm, idx) => (
+                                <div key={idx} className="mismatch-item">
+                                    - <strong>{mm.fieldLabel}:</strong> {(mm.note === "manual value conflict" ? "Your entered value" : "Expected")} "<code>{mm.expected || '(empty)'}</code>", found "<code>{mm.actual}</code>" in document.
+                                    {mm.note === "manual value conflict" ? " Please ensure consistency or clear your entry to auto-fill." : (mm.conflictingDoc ? ` Conflicts with data from ${mm.conflictingDoc}.` : "")}
+                                </div>
+                            ))} </>
+                        )}
+                    </Alert>
+                    )}
+            </ListGroup.Item>
         );
+    };
+
+
+    const getDocStatusBadge = (docTypeKey) => {
+        const refKey = `reqDoc_${docTypeKey}`;
+        const hasNew = !!requiredDocFiles[docTypeKey];
+        const hasExisting = !!existingFileRefs[refKey];
+        const statusInfo = docValidationStatus[docTypeKey];
+        const docError = showValidationErrors && formErrors[refKey]; 
+
+        if (statusInfo?.status === 'validating') return <Badge bg="light" text="dark" className="status-badge validating"><Spinner animation="border" size="sm" className="me-1"/> Validating...</Badge>;
+        if (statusInfo?.status === 'verified') return <Badge bg="success-subtle" text="success-emphasis" className="status-badge verified"><Check size={14} className="me-1"/> Verified</Badge>;
+        if (statusInfo?.status === 'error' && statusInfo.mismatches?.[0]?.fieldLabel === 'Document Type Mismatch') return <Badge bg="danger-subtle" text="danger-emphasis" className="status-badge error"><FileWarning size={14} className="me-1"/> Wrong Doc Type</Badge>;
+        if (statusInfo?.status === 'error') {
+            const allMismatchesAnnexureEligible = statusInfo.mismatches?.every(
+                mm => ANNEXURE_ELIGIBLE_FIELD_LABELS.includes(mm.fieldLabel)
+            );
+            if (allMismatchesAnnexureEligible) {
+                return <Badge bg="warning-subtle" text="warning-emphasis" className="status-badge error"><AlertCircle size={14} className="me-1"/> Name/Address Mismatch (Annexure?)</Badge>;
+            }
+            return <Badge bg="danger-subtle" text="danger-emphasis" className="status-badge error"><AlertCircle size={14} className="me-1"/> Data Error</Badge>;
+        }
+        if (hasNew) return <Badge bg="info-subtle" text="info-emphasis" className="status-badge">New File</Badge>;
+        if (hasExisting) return <Badge bg="secondary-subtle" text="secondary-emphasis" className="status-badge">Uploaded</Badge>;
+        if (docError) return <Badge bg="danger-subtle" text="danger-emphasis" className="status-badge error">Missing</Badge>;
+        return <Badge bg="light" text="dark" className="status-badge">Pending Upload</Badge>;
     }
 
-    if (submissionStatus === 'submitted') {
-        return (
-            <Container className="mt-5 text-center">
-                <Alert variant="success" className="shadow-sm p-4">
-                    <h3><FaCheckCircle className="me-2 text-success" />Application Submitted!</h3>
-                    <p>Your application for "{loanSchemaData?.title}" has been received.</p>
-                    <p>Submission ID: <strong>{finalLoanSubmissionId}</strong></p>
-                    <hr />
-                    <Button variant="primary" size="sm" onClick={() => navigate('/dashboard')}>Go to Dashboard</Button>
-                </Alert>
-            </Container>
-        );
-    }
 
-    // Helper functions to get errors for display
-    const getFieldError = (sectionName, fieldKey) => formErrors[sectionName]?.[fieldKey];
-    const getSectionGeneralError = (sectionName) => formErrors[sectionName]?._general;
+    if (loading) { return <Container fluid className="d-flex flex-column justify-content-center align-items-center page-loading-container"> <Spinner animation="border" variant="primary" style={{ width: '3rem', height: '3rem' }} /> <p className="mt-3 text-muted fs-5">Loading Application Details...</p> </Container>; }
+    if (!loanSchemaData && !loading) { return <Container className="mt-5"><Alert variant="danger">{apiError || 'Could not load loan details.'}</Alert></Container>; }
+    if (submissionStatus === 'submitted') { return <Container className="mt-5 text-center"><Alert variant="success" className="shadow-sm"><h3><FaCheckCircle className="me-2"/>Application Submitted!</h3><p>Your application for "{loanSchemaData?.title}" has been received.</p><p>Submission ID: <strong>{submissionId}</strong></p><hr/><Button variant="primary" size="sm" onClick={() => navigate('/dashboard')}>Go to Dashboard</Button></Alert></Container>; }
+
+
+    const otherRequiredDocs = loanSchemaData.required_documents?.filter(
+        doc => doc.name !== 'aadhaar_card' && doc.name !== 'pan_card'
+    ) || [];
+
 
     return (
         <Container fluid className="my-4 application-form-container p-md-4">
-            <LoanInfoHeader loanSchemaData={loanSchemaData} />
+             <Card className="shadow-sm mb-4 loan-info-card">
+                <Card.Header as="h5" className="bg-primary text-white loan-info-header d-flex align-items-center">
+                    <FaInfoCircle className="me-2"/> Loan Overview
+                </Card.Header>
+                <Card.Body className="p-4">
+                    <Card.Title as="h2" className="mb-2 loan-title">{loanSchemaData.title}</Card.Title>
+                    {loanSchemaData.description && (
+                        <Card.Subtitle className="mb-3 text-muted loan-description" dangerouslySetInnerHTML={{ __html: loanSchemaData.description }} />
+                    )}
+                    <hr />
+                    <Row className="mb-3 text-center loan-key-metrics">
+                        <Col md={3} xs={6} className="metric-item mb-3 mb-md-0">
+                            <FaPercentage className="metric-icon text-success mb-1" size="1.8em"/>
+                            <div className="metric-label">Interest Rate</div>
+                            <strong className="metric-value fs-5">{loanSchemaData.interest_rate}%</strong>
+                        </Col>
+                        <Col md={3} xs={6} className="metric-item mb-3 mb-md-0">
+                            <FaCalendarAlt className="metric-icon text-info mb-1" size="1.8em"/>
+                            <div className="metric-label">Max Tenure</div>
+                            <strong className="metric-value fs-5">{loanSchemaData.tenure_months} months</strong>
+                        </Col>
+                        <Col md={3} xs={6} className="metric-item">
+                            <FaDollarSign className="metric-icon text-warning mb-1" size="1.8em"/>
+                            <div className="metric-label">Processing Fee</div>
+                            <strong className="metric-value fs-5">₹{loanSchemaData.processing_fee?.toLocaleString('en-IN')}</strong>
+                        </Col>
+                         <Col md={3} xs={6} className="metric-item">
+                            <Landmark className="metric-icon text-primary mb-1" size="1.8em"/> {/* Using Lucide icon */}
+                            <div className="metric-label">Collateral</div>
+                            <strong className="metric-value fs-5">{loanSchemaData.collateral_required ? "Required" : "Not Required"}</strong>
+                        </Col>
+                    </Row>
 
-            {/* Global Alerts */}
-            {apiError && !isSubmitting && submissionStatus !== 'submitted' && <Alert variant="danger" onClose={() => setApiError("")} dismissible>{apiError.split('\n').map((line, i) => <span key={i}>{line}<br/></span>)}</Alert>}
-            {autoFillError && <Alert variant="warning" onClose={() => setAutoFillError("")} dismissible><strong>Auto-fill Notice:</strong> {autoFillError.split('\n').map((line, i) => <span key={i}>{line}<br/></span>)}</Alert>}
-            {draftSaveStatus.message && !isSavingDraft && <Alert variant={draftSaveStatus.error ? "danger" : (draftSaveStatus.saved ? "success" : "info")} onClose={() => setDraftSaveStatus(prev => ({ ...prev, message: '' }))} dismissible>{draftSaveStatus.message}</Alert>}
+                    {loanSchemaData.eligibility && (
+                        <>
+                            <hr />
+                            <h5 className="mt-3 mb-3 eligibility-main-title">Who Can Apply? (Eligibility)</h5>
+                            <Row className="eligibility-details">
+                                <Col md={6} lg={4} className="mb-2 eligibility-criterion">
+                                    <UserCheck size={18} className="me-2 text-muted"/> <strong>Age:</strong> {loanSchemaData.eligibility.min_age}
+                                    {loanSchemaData.eligibility.max_age ? ` - ${loanSchemaData.eligibility.max_age}` : '+'} years
+                                </Col>
+                                {loanSchemaData.eligibility.min_income != null && (
+                                    <Col md={6} lg={4} className="mb-2 eligibility-criterion">
+                                        <FaDollarSign className="me-2 text-muted"/> <strong>Min. Income:</strong> ₹{loanSchemaData.eligibility.min_income?.toLocaleString('en-IN')}
+                                    </Col>
+                                )}
+                                {loanSchemaData.eligibility.min_credit_score && (
+                                    <Col md={6} lg={4} className="mb-2 eligibility-criterion">
+                                        <BarChart3 size={18} className="me-2 text-muted"/> <strong>Min. Credit Score:</strong> {loanSchemaData.eligibility.min_credit_score}
+                                    </Col>
+                                )}
+                                {/* You can add more eligibility criteria here if they exist in your schema */}
+                            </Row>
+                        </>
+                    )}
+                </Card.Body>
+            </Card>
 
-            <Form ref={formRef} onSubmit={handleSubmit} noValidate className={showValidationErrors ? 'was-validated' : ''}>
-                {/* Aadhaar Section */}
-                {aadhaarSchemaDef && 
-                    <KycDocumentSection
-                        docSchemaDef={aadhaarSchemaDef}
-                        docFormData={aadhaarFormData}
-                        sectionName="aadhaar"
-                        docValidationState={docValidationStatus[aadhaarSchemaDef.name]}
-                        existingFileRefs={existingFileRefs}
-                        onFieldChange={handleSectionFieldChange}
-                        onFileChange={handleKycFileChange} 
-                        getFieldError={getFieldError}
-                        getSectionGeneralError={getSectionGeneralError}
-                        isSubmitting={isSubmitting}
-                        isSavingDraft={isSavingDraft}
-                        showValidationErrors={showValidationErrors}
-                        autoFilledKycFields={kycAutoFilledFields.aadhaar || {}} 
-                    />
-                }
 
-                {/* PAN Section */}
-                {panSchemaDef &&
-                    <KycDocumentSection
-                        docSchemaDef={panSchemaDef}
-                        docFormData={panFormData}
-                        sectionName="pan"
-                        docValidationState={docValidationStatus[panSchemaDef.name]}
-                        existingFileRefs={existingFileRefs}
-                        onFieldChange={handleSectionFieldChange}
-                        onFileChange={handleKycFileChange} 
-                        getFieldError={getFieldError}
-                        getSectionGeneralError={getSectionGeneralError}
-                        isSubmitting={isSubmitting}
-                        isSavingDraft={isSavingDraft}
-                        showValidationErrors={showValidationErrors}
-                        autoFilledKycFields={kycAutoFilledFields.pan || {}} 
-                    />
-                }
+            <Card className="shadow-sm application-details-card">
+                <Card.Header className="bg-light"> <h4 className="mb-0 card-form-title">Your Application Details</h4> </Card.Header>
+                <Card.Body className="p-4">
+                    {apiError && <Alert variant="danger" className="api-error-alert" onClose={() => setApiError("")} dismissible>{apiError}</Alert>}
+                    {autoFillError && <Alert variant="warning" className="autofill-error-alert" onClose={() => setAutoFillError("")} dismissible><strong>Data Notice:</strong> {autoFillError}</Alert>}
 
-                {/* Loan Details Section */}
-                {loanSchemaData &&
-                    <LoanDetailsSection
-                        loanSchemaData={loanSchemaData}
-                        mainFormData={mainFormData}
-                        handleSectionFieldChange={handleSectionFieldChange}
-                        handleMainLoanCustomFileChange={handleMainLoanCustomFileChange}
-                        getFieldError={getFieldError}
-                        isSubmitting={isSubmitting}
-                        isSavingDraft={isSavingDraft}
-                        existingFileRefs={existingFileRefs}
-                        autoFilledFields={autoFilledFields}
-                        docValidationStatus={docValidationStatus}
-                        aadhaarSchemaDef={aadhaarSchemaDef}
-                        panSchemaDef={panSchemaDef}
-                        showValidationErrors={showValidationErrors}
-                    />
-                }
-                
-                {/* Other Required Documents Section */}
-                {loanSchemaData && aadhaarSchemaDef && panSchemaDef &&
-                    <OtherDocumentsSection
-                        loanSchemaData={loanSchemaData}
-                        otherRequiredDocFiles={otherRequiredDocFiles}
-                        handleOtherRequiredDocFileChange={handleOtherRequiredDocFileChange}
-                        getFieldError={getFieldError}
-                        isSubmitting={isSubmitting}
-                        isSavingDraft={isSavingDraft}
-                        existingFileRefs={existingFileRefs}
-                        showValidationErrors={showValidationErrors}
-                        aadhaarSchemaDef={aadhaarSchemaDef}
-                        panSchemaDef={panSchemaDef}
-                    />
-                }
+                    <Form ref={formRef} onSubmit={handleSubmit} noValidate className={showValidationErrors ? 'was-validated' : ''}>
+                        <Form.Group as={Row} className="mb-4 align-items-center" controlId="amount">
+                            <Form.Label column sm={3} className="fw-bold form-section-label">Loan Amount Requested*</Form.Label>
+                            <Col sm={9}>
+                                <InputGroup>
+                                    <InputGroup.Text>₹</InputGroup.Text>
+                                    <Form.Control type="number" value={formData.amount || ''} onChange={(e) => handleInputChange("amount", e.target.value)} required min={loanSchemaData.min_amount} max={loanSchemaData.max_amount} step="any" disabled={isSubmitting || isSavingDraft} isInvalid={showValidationErrors && !!formErrors.amount}/>
+                                    <Form.Control.Feedback type="invalid">{formErrors.amount}</Form.Control.Feedback>
+                                </InputGroup>
+                                <Form.Text className="text-muted d-block mt-1"> Min: ₹{loanSchemaData.min_amount?.toLocaleString('en-IN')}, Max: ₹{loanSchemaData.max_amount?.toLocaleString('en-IN')} </Form.Text>
+                            </Col>
+                        </Form.Group>
 
-                {/* Action Buttons */}
-                <ActionButtons
-                    isSubmitting={isSubmitting}
-                    isSavingDraft={isSavingDraft}
-                    isFormValidForSubmit={isFormValidForSubmit}
-                    submissionStatus={submissionStatus}
-                    draftSaveStatus={draftSaveStatus}
-                    handleSaveDraft={handleSaveDraft}
-                />
-            </Form>
+                        {loanSchemaData.fields?.length > 0 && <><hr className="my-4"/><h5 className='mb-3 section-title'>Additional Information</h5></>}
+                        {loanSchemaData.fields?.map((field) => (
+                             <FieldRenderer
+                                key={field.field_id} field={field} value={formData[field.field_id]}
+                                onChange={handleInputChange} onFileChange={handleCustomFieldFileChange}
+                                error={formErrors[field.field_id]} disabled={isSubmitting || isSavingDraft}
+                                existingFileUrl={existingFileRefs[field.field_id]}
+                                isAutoFilled={!!autoFilledFields[field.field_id]}
+                                autoFilledDetail={autoFilledFields[field.field_id]}
+                                isPotentiallyAutoFill={field.auto_fill_sources && field.auto_fill_sources.length > 0}
+                                autoFillSources={field.auto_fill_sources || []}
+                                docValidationStatus={docValidationStatus} 
+                                allDocSchemasForSourceLookup={{
+                                    documentDefinitions: loanSchemaData.document_definitions || {},
+                                    aadhaar_card_definition: loanSchemaData.aadhaar_card_definition, 
+                                    pan_card_definition: loanSchemaData.pan_card_definition,         
+                                    required: loanSchemaData.required_documents || [],
+                                    existingGlobalFileRefs: existingFileRefs
+                                }}
+                                requiredDocFiles={requiredDocFiles} 
+                                showValidationErrors={showValidationErrors}
+                            />
+                        ))}
+
+                        {/* --- MANDATORY DOCUMENTS SECTION --- */}
+                        <hr className="my-4"/>
+                        <h5 className='mb-3 section-title'><FaFileMedicalAlt className="me-2 text-danger"/>Mandatory Documents</h5>
+                        <ListGroup variant="flush" className='mb-4 mandatory-docs-listgroup'>
+                            {renderRequiredDocumentItem('aadhaar_card', true)}
+                            {renderRequiredDocumentItem('pan_card', true)}
+                        </ListGroup>
+                        {/* --- END MANDATORY DOCUMENTS SECTION --- */}
+
+
+                        {/* --- OTHER REQUIRED DOCUMENTS SECTION --- */}
+                        {otherRequiredDocs.length > 0 && (
+                            <>
+                                <hr className="my-4"/>
+                                <h5 className='mb-3 section-title'><FaListOl className="me-2 text-info"/>Other Required Documents</h5>
+                                <ListGroup variant="flush" className='mb-4 required-docs-listgroup'>
+                                    {otherRequiredDocs.map((doc) => renderRequiredDocumentItem(doc.name))}
+                                </ListGroup>
+                            </>
+                        )}
+                        {/* --- END OTHER REQUIRED DOCUMENTS SECTION --- */}
+
+                        {/* --- ANNEXURE SECTION --- */}
+                        {showAnnexureUpload && (
+                            <>
+                                <hr className="my-4"/>
+                                <h5 className='mb-3 section-title'><FaPaperclip className="me-2 text-warning"/>Annexure for Discrepancies</h5>
+                                <Card className="mb-4 border-warning">
+                                    <Card.Body>
+                                        <Alert variant="warning">
+                                            <FaExclamationTriangle className="me-2"/>
+                                            There are discrepancies in Name and/or Address fields based on the documents provided.
+                                            Please download the annexure form, fill it correctly, and upload it to proceed.
+                                            <ul>
+                                                {annexureEligibleMismatches.map((mismatch, idx) => (
+                                                    <li key={idx}>
+                                                        Discrepancy in <strong>{mismatch.fieldLabel}</strong> from {
+                                                            mismatch.docTypeKey === 'aadhaar_card' ? (loanSchemaData?.aadhaar_card_definition?.label || 'Aadhaar Card') :
+                                                            mismatch.docTypeKey === 'pan_card' ? (loanSchemaData?.pan_card_definition?.label || 'PAN Card') :
+                                                            (loanSchemaData?.document_definitions?.[mismatch.docTypeKey]?.label || mismatch.docTypeKey)
+                                                        }.
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </Alert>
+                                        <div className="mb-3">
+                                            <Button variant="info" size="sm" href="/annexure.pdf" target="_blank" download="Annexure_Form.pdf">
+                                                <FaDownload className="me-2"/>Download Annexure Form
+                                            </Button>
+                                        </div>
+                                        <Form.Group controlId="annexureFile" className="mb-2">
+                                            <Form.Label>Upload Signed Annexure (PDF only)*</Form.Label>
+                                            <Form.Control
+                                                type="file"
+                                                accept="application/pdf"
+                                                onChange={handleAnnexureFileChange}
+                                                isInvalid={showValidationErrors && !!formErrors.annexure}
+                                                size="sm"
+                                            />
+                                            {annexureFile && <div className="mt-1 text-muted small">Selected: {annexureFile.name}</div>}
+                                            {existingAnnexureFileRef && !annexureFile && 
+                                                <div className="mt-1 text-success small">
+                                                    <FaCheckCircle className="me-1"/> Current Annexure: {decodeURIComponent(new URL(existingAnnexureFileRef).pathname.split('/').pop() || existingAnnexureFileRef).substring(0,30)}...
+                                                </div>
+                                            }
+                                            <Form.Control.Feedback type="invalid">{formErrors.annexure}</Form.Control.Feedback>
+                                            {annexureFileError && <div className="text-danger small mt-1">{annexureFileError}</div>}
+                                        </Form.Group>
+                                    </Card.Body>
+                                </Card>
+                            </>
+                        )}
+                        {/* --- END ANNEXURE SECTION --- */}
+
+
+                        {/* --- FACE VERIFICATION SECTION --- */}
+                        {showFaceVerificationModule && aadhaarPhotoIdForVerification && (
+                            <>
+                                <hr className="my-4"/>
+                                <h5 className='mb-3 section-title'><FaShieldAlt className="me-2 text-primary"/>Face Verification</h5>
+                                <Card className="mb-4 face-verification-card shadow-sm">
+                                    <Card.Body className="p-3">
+                                        {isFaceVerificationComplete ? (
+                                            <Alert variant="success" className="text-center">
+                                                <FaCheckCircle className="me-2"/> Face Verification Successful.
+                                            </Alert>
+                                        ) : (
+                                            <>
+                                                <p className="text-muted small mb-2">
+                                                    Please complete live face verification. This step uses the photo from your uploaded Aadhaar card as a reference.
+                                                </p>
+                                                <FaceVerificationApp
+                                                    referenceImageId={aadhaarPhotoIdForVerification}
+                                                    onVerificationComplete={handleFaceVerificationResult}
+                                                />
+                                                {faceVerificationError && (
+                                                    <Alert variant="danger" className="mt-3 py-2 small">{faceVerificationError}</Alert>
+                                                )}
+                                                 {showValidationErrors && formErrors.face_verification && (
+                                                    <Alert variant="danger" className="mt-3 py-2 small">{formErrors.face_verification}</Alert>
+                                                )}
+                                            </>
+                                        )}
+                                    </Card.Body>
+                                </Card>
+                            </>
+                        )}
+                        {/* --- END FACE VERIFICATION SECTION --- */}
+
+
+                        <Row>
+                            <Col className="d-flex justify-content-end pt-3 mt-3 border-top">
+                                <Button type="button" variant={draftSaveStatus.saved ? "outline-success" : "outline-secondary"} className="me-2 save-draft-button" onClick={handleSaveDraft} disabled={isSavingDraft || isSubmitting}>
+                                    {isSavingDraft ? <><Spinner as="span" animation="border" size="sm" /> Saving...</> : (draftSaveStatus.saved ? <><FaCheckCircle className="me-1"/>Draft Saved</> : <><FaRegSave className="me-1"/>Save Draft</>)}
+                                </Button>
+                                <Button
+                                    type="submit" variant="primary" className="submit-button"
+                                    disabled={isSubmitting || isSavingDraft || !isFormValidForSubmit}
+                                    title={!isFormValidForSubmit ? "Please complete all required fields, resolve document issues, and complete face verification." : "Submit Application"}
+                                >
+                                    {isSubmitting ? <><Spinner as="span" animation="border" size="sm" className="me-1"/> Submitting...</> : <><FaCloudUploadAlt className="me-1"/>Submit Application</>}
+                                </Button>
+                            </Col>
+                        </Row>
+                    </Form>
+                </Card.Body>
+            </Card>
         </Container>
     );
 }

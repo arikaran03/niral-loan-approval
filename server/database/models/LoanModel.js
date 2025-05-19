@@ -1,5 +1,5 @@
 // src/models/Loan.js (or similar)
-import mongoose from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 
 // Subdocument Schemas (remain the same)
 const fieldSchema = new mongoose.Schema({
@@ -23,7 +23,8 @@ const eligibilitySchema = new mongoose.Schema({
 
 const documentRequirementSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  description: String
+  description: String,
+  schema_id: { type: String, required: true }, // Reference to the schema definition
 }, { _id: false });
 
 // --- Main Loan Schema (MODIFIED) ---
@@ -31,7 +32,7 @@ const loanSchema = new mongoose.Schema({
   // --- Basic Metadata ---
   title:       { type: String, required: true },
   description: { type: String, required: true },  // rich HTML allowed
-  // created_by: removed - handled by backend context
+  
 
   // --- Status ---
   status: {

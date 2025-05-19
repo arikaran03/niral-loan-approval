@@ -124,7 +124,7 @@ export default function Login() {
                   <div className="feature-icon">
                     <FaUserShield />
                   </div>
-                  <span>Military-grade encryption</span>
+                  <span>Secured Loan Processing</span>
                 </div>
                 <div className="feature-item">
                   <div className="feature-icon">

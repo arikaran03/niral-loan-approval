@@ -41,108 +41,216 @@ export async function getDraft(req, res, next) {
     }
 }
 
+
 export async function createSubmission(req, res, next) {
     try {
       const { loanId } = req.params;
-      const userId = req.user._id;
-      const { amount, fields, requiredDocumentRefs } = req.body;
+      const userId = req.user._id; // Assuming req.user is populated by auth middleware
 
-      if (!mongoose.Types.ObjectId.isValid(loanId)) return res.status(400).json({ error: 'Invalid loan ID.' });
-      const loan = await Loan.findById(loanId).select('+fields +required_documents'); // Ensure all necessary fields are selected
-      if (!loan) return res.status(404).json({ error: 'Loan definition not found.' });
-      const existingFinal = await LoanSubmission.findOne({ loan_id: loanId, user_id: userId, stage: { $nin: ['draft', 'rejected'] } });
-      if (existingFinal) return res.status(400).json({ error: 'You have an active or pending submission for this loan.' });
-      if (typeof amount !== 'number' || amount <= 0) return res.status(400).json({ error: 'Valid positive loan amount is required.' });
-      if (loan.min_amount !== null && amount < loan.min_amount) return res.status(400).json({ error: `Amount must be at least ${loan.min_amount}.` });
-      if (loan.max_amount !== null && amount > loan.max_amount) return res.status(400).json({ error: `Amount cannot exceed ${loan.max_amount}.` });
-      if (!Array.isArray(fields)) return res.status(400).json({ error: 'Fields data must be an array.' });
-      if (!Array.isArray(requiredDocumentRefs)) return res.status(400).json({ error: 'Required documents references must be an array.' });
+      // Destructure all expected fields from the payload
+      const { 
+        amount, 
+        fields, // Custom fields data
+        requiredDocumentRefs, // Array of { documentTypeKey, fileRef }
+        isFaceVerified, 
+        annexureDocumentRef,
+        aadhaar_data, // Extracted Aadhaar data object
+        pan_data      // Extracted PAN data object
+      } = req.body;
 
-      const submissionFields = [];
-      const submissionRequiredDocs = [];
+      console.log("Received payload for submission:", req.body);
+
+
+      if (!mongoose.Types.ObjectId.isValid(loanId)) {
+        return res.status(400).json({ error: 'Invalid loan ID.' });
+      }
+      const loanDefinition = await Loan.findById(loanId).select('+fields +required_documents +aadhaar_card_definition +pan_card_definition');
+      if (!loanDefinition) {
+        return res.status(404).json({ error: 'Loan definition not found.' });
+      }
+
+      const existingFinalSubmission = await LoanSubmission.findOne({ 
+        loan_id: loanId, 
+        user_id: userId, 
+        stage: { $nin: ['draft', 'rejected', 'closed'] } // Active stages
+      });
+      if (existingFinalSubmission) {
+        return res.status(400).json({ error: 'You already have an active or pending submission for this loan.' });
+      }
+
+      // --- Basic Payload Validations ---
+      if (typeof amount !== 'number' || amount <= 0) {
+        return res.status(400).json({ error: 'Valid positive loan amount is required.' });
+      }
+      if (loanDefinition.min_amount !== null && amount < loanDefinition.min_amount) {
+        return res.status(400).json({ error: `Amount must be at least ${loanDefinition.min_amount}.` });
+      }
+      if (loanDefinition.max_amount !== null && amount > loanDefinition.max_amount) {
+        return res.status(400).json({ error: `Amount cannot exceed ${loanDefinition.max_amount}.` });
+      }
+      if (!Array.isArray(fields)) {
+        return res.status(400).json({ error: 'Fields data must be an array.' });
+      }
+      if (!Array.isArray(requiredDocumentRefs)) { // This comes from frontend
+        return res.status(400).json({ error: 'Required documents references must be an array.' });
+      }
+      if (!aadhaar_data || typeof aadhaar_data !== 'object' || Object.keys(aadhaar_data).length === 0) {
+        return res.status(400).json({ error: 'Aadhaar data is missing or invalid.' });
+      }
+      if (!pan_data || typeof pan_data !== 'object' || Object.keys(pan_data).length === 0) {
+        return res.status(400).json({ error: 'PAN data is missing or invalid.' });
+      }
+      // Face verification check (assuming aadhaar_card_definition is loaded with loanDefinition)
+      let aadhaarRequiresFaceVerification = false;
+      if (loanDefinition.aadhaar_card_definition && loanDefinition.aadhaar_card_definition.fields) {
+            aadhaarRequiresFaceVerification = loanDefinition.aadhaar_card_definition.fields.some(f => f.key === 'photo');
+      }
+      if (aadhaarRequiresFaceVerification && isFaceVerified !== true) {
+          return res.status(400).json({ error: 'Face verification is mandatory and not completed.' });
+      }
+
+
+      // --- Process and Validate Custom Fields ---
+      const submissionFieldsValidated = [];
       const validationErrors = [];
       const submittedFieldsMap = new Map(fields.map(f => [f.field_id, f]));
-      const submittedDocsMap = new Map(requiredDocumentRefs.map(d => [d.documentName, d]));
 
-      for (const schemaField of loan.fields) {
+      for (const schemaField of loanDefinition.fields) {
           const submittedField = submittedFieldsMap.get(schemaField.field_id);
           const value = submittedField?.value;
           const fileRef = submittedField?.fileRef; 
 
           if (schemaField.required) {
               if (schemaField.type === 'image' || schemaField.type === 'document') {
-                  if (!fileRef || !mongoose.Types.ObjectId.isValid(fileRef)) { validationErrors.push(`File upload is required for ${schemaField.field_label}.`); }
+                  if (!fileRef || !mongoose.Types.ObjectId.isValid(fileRef)) { 
+                    validationErrors.push(`File upload is required for custom field: ${schemaField.field_label}.`); 
+                  }
               } else if (schemaField.type === 'checkbox') {
-                   if (value !== true) { validationErrors.push(`${schemaField.field_label} must be checked.`); }
+                   if (value !== true) { 
+                    validationErrors.push(`Custom field ${schemaField.field_label} must be checked.`); 
+                   }
               } else {
-                  if (value === null || value === undefined || String(value).trim() === '') { validationErrors.push(`Value is required for ${schemaField.field_label}.`); }
+                  if (value === null || value === undefined || String(value).trim() === '') { 
+                    validationErrors.push(`Value is required for custom field: ${schemaField.field_label}.`); 
+                  }
               }
           }
-
-          if (submittedField) {
-              submissionFields.push({
-                  field_id: schemaField.field_id, field_label: schemaField.field_label, type: schemaField.type,
+          // Add to submission even if not required but value is present, or if it's a file field (fileRef might be null if not required)
+          if (submittedField || (schemaField.type === 'image' || schemaField.type === 'document')) {
+              submissionFieldsValidated.push({
+                  field_id: schemaField.field_id, 
+                  field_label: schemaField.field_label, 
+                  type: schemaField.type,
                   value: (schemaField.type !== 'image' && schemaField.type !== 'document') ? value : null,
-                  fileRef: (schemaField.type === 'image' || schemaField.type === 'document') ? fileRef : null 
+                  fileRef: (schemaField.type === 'image' || schemaField.type === 'document') ? (fileRef || null) : null 
               });
-          } else if (schemaField.required) {
-              validationErrors.push(`Required field ${schemaField.field_label} was not submitted.`);
+          } else if (schemaField.required) { // Should have been caught above, but as a fallback
+              validationErrors.push(`Required custom field ${schemaField.field_label} was not submitted.`);
           }
       }
 
-       for (const reqDoc of loan.required_documents) {
-           const submittedDoc = submittedDocsMap.get(reqDoc.name);
-           const fileRef = submittedDoc?.fileRef; 
+      // --- Process and Validate Required Document References ---
+      const submissionRequiredDocsValidated = [];
+      // Create a map of submitted document references for quick lookup
+      const submittedRequiredDocsMap = new Map(requiredDocumentRefs.map(d => [d.documentTypeKey, d]));
 
-           if (!fileRef || !mongoose.Types.ObjectId.isValid(fileRef)) {
-               validationErrors.push(`Required document upload is missing for ${reqDoc.name}.`);
+      // 1. Validate Aadhaar Card
+      const aadhaarSubmittedRef = submittedRequiredDocsMap.get('aadhaar_card');
+      if (!aadhaarSubmittedRef || !aadhaarSubmittedRef.fileRef || !mongoose.Types.ObjectId.isValid(aadhaarSubmittedRef.fileRef)) {
+          validationErrors.push('Aadhaar Card document upload is mandatory and missing/invalid.');
+      } else {
+          submissionRequiredDocsValidated.push({ documentTypeKey: 'aadhaar_card', fileRef: aadhaarSubmittedRef.fileRef });
+      }
+
+      // 2. Validate PAN Card
+      const panSubmittedRef = submittedRequiredDocsMap.get('pan_card');
+      if (!panSubmittedRef || !panSubmittedRef.fileRef || !mongoose.Types.ObjectId.isValid(panSubmittedRef.fileRef)) {
+          validationErrors.push('PAN Card document upload is mandatory and missing/invalid.');
+      } else {
+          submissionRequiredDocsValidated.push({ documentTypeKey: 'pan_card', fileRef: panSubmittedRef.fileRef });
+      }
+      
+      // 3. Validate Other Required Documents (from loan definition)
+      const otherLoanRequiredDocs = (loanDefinition.required_documents || []).filter(
+          docDef => docDef.name !== 'aadhaar_card' && docDef.name !== 'pan_card'
+      );
+
+      for (const reqDocDef of otherLoanRequiredDocs) {
+           const submittedDoc = submittedRequiredDocsMap.get(reqDocDef.name); // reqDocDef.name is the documentTypeKey
+           if (!submittedDoc || !submittedDoc.fileRef || !mongoose.Types.ObjectId.isValid(submittedDoc.fileRef)) {
+               validationErrors.push(`Required document upload is missing for ${reqDocDef.label || reqDocDef.name}.`);
            } else {
-               submissionRequiredDocs.push({
-                   documentName: reqDoc.name,
-                   fileRef: fileRef 
+               submissionRequiredDocsValidated.push({
+                   documentTypeKey: reqDocDef.name,
+                   fileRef: submittedDoc.fileRef 
                });
            }
        }
+       
+      // Annexure check - if annexureDocumentRef is provided, it must be a valid ObjectId
+      if (annexureDocumentRef && !mongoose.Types.ObjectId.isValid(annexureDocumentRef)) {
+        validationErrors.push('Invalid Annexure Document reference.');
+      }
 
-      if (validationErrors.length > 0) { return res.status(400).json({ error: validationErrors.join('; ') }); }
+
+      if (validationErrors.length > 0) { 
+        console.warn("Submission validation errors:", validationErrors);
+        return res.status(400).json({ error: validationErrors.join('; ') }); 
+      }
       
+      // --- Prepare Submission Data ---
       let submission = await LoanSubmission.findOne({ loan_id: loanId, user_id: userId, stage: 'draft' });
       const now = new Date();
       const historyEntry = { stage: 'pending', changed_by: userId, changed_at: now }; 
-      const submissionData = {
-          loan_id: loan._id, user_id: userId, amount,
-          fields: submissionFields,
-          requiredDocumentRefs: submissionRequiredDocs,
+      
+      const finalSubmissionData = {
+          loan_id: loanDefinition._id, 
+          user_id: userId, 
+          amount,
+          fields: submissionFieldsValidated, // Use the validated and structured fields
+          requiredDocumentRefs: submissionRequiredDocsValidated, // Use the validated and structured doc refs
+          aadhaar_data, // Directly from payload
+          pan_data,     // Directly from payload
+          isFaceVerified: isFaceVerified || false, // Default to false if not provided
+          annexureDocumentRef: annexureDocumentRef || null,
           stage: 'pending', 
           history: submission?.history ? [...submission.history, historyEntry] : [historyEntry], 
           updated_at: now,
+          // Clear fields that might be set by an admin later
           approver_id: undefined,
           approval_date: undefined,
           rejection_reason: undefined
       };
 
       if (submission) { 
-          submission.set(submissionData); 
+          console.log("Updating existing draft submission to 'pending'. ID:", submission._id);
+          submission.set(finalSubmissionData); 
+          // Set the transient field for pre-save hook for history
+          submission.changed_by_user_id_for_stage_change = userId;
           await submission.save();
       } else { 
-          submission = await LoanSubmission.create({ ...submissionData, created_at: now }); 
+          console.log("Creating new submission with stage 'pending'.");
+          submission = await LoanSubmission.create({ ...finalSubmissionData, created_at: now }); 
       }
 
-      const finalSubmission = await LoanSubmission.findById(submission._id)
-          .populate('user_id', 'name email account_number')
-          .populate('loan_id', 'title');
+      // Populate for response
+      const populatedSubmission = await LoanSubmission.findById(submission._id)
+          .populate('user_id', 'name email') // Adjust fields as needed
+          .populate('loan_id', 'title interest_rate'); // Adjust fields as needed
 
-      return res.status(201).json(finalSubmission); 
+      return res.status(201).json(populatedSubmission); 
 
     } catch (err) {
       if (err.name === 'ValidationError') {
           const msg = formatMongooseError(err);
+          console.error("Mongoose Validation Error in createSubmission:", msg, err.errors);
           return res.status(400).json({ error: msg });
       }
       console.error("Error in createSubmission:", err);
-      next(err);
+      next(err); // Pass to global error handler
     }
 }
+
 
 export async function listByLoan(req, res, next) {
     try {
@@ -175,7 +283,21 @@ export async function getSubmission(req, res, next) {
       if (!submission) {
         return res.status(404).json({ error: 'Submission not found.' });
       }
-      return res.json(submission);
+
+      const loanDetails = await Loan.findById(submission.loan_id);
+      if (!loanDetails) {
+        return res.status(404).json({ error: 'Associated loan product not found.' });
+      }
+      
+      return res.json({
+        ...submission.toObject(),
+        loanDetails: {
+          title: loanDetails.title,
+          interest_rate: loanDetails.interest_rate,
+          tenure_months: loanDetails.tenure_months,
+          processing_fee: loanDetails.processing_fee
+        }
+      });
     } catch (err) {
         console.error("Error in getSubmission:", err);
         next(err);
@@ -497,6 +619,7 @@ export async function getMySubmissions(req, res, next) {
     if (!userId) {
         return res.status(401).json({ error: 'User not authenticated.' });
     }
+
     const submissions = await LoanSubmission.find({ user_id: userId })
       .populate('loan_id', 'title interest_rate tenure_months') 
       .sort({ updated_at: -1 }); 

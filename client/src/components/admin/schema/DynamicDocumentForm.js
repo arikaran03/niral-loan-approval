@@ -7,12 +7,11 @@ import {
   Row,
   Col,
   Card,
-  InputGroup, // Kept for potential future use, not directly used in this version
   Spinner,
   Alert,
 } from "react-bootstrap";
-import { FaPlusCircle, FaTrashAlt, FaInfoCircle, FaKey } from "react-icons/fa"; // Added FaKey
-import { axiosInstance } from "../../../config.js"; 
+import { FaPlusCircle, FaTrashAlt, FaInfoCircle, FaKey } from "react-icons/fa";
+import { axiosInstance } from "../../../config.js";
 
 // Define the possible field types based on your schema
 const FIELD_TYPES = [
@@ -26,6 +25,26 @@ const FIELD_TYPES = [
   "image",
   "document",
 ];
+
+// --- Date Helper Functions ---
+// Converts YYYY-MM-DD to DD-MM-YYYY
+const formatDateToDDMMYYYY = (isoDateString) => {
+  if (!isoDateString || !/^\d{4}-\d{2}-\d{2}$/.test(isoDateString)) return isoDateString; // Return original if not valid YYYY-MM-DD
+  const parts = isoDateString.split('-');
+  if (parts.length !== 3) return isoDateString;
+  const [year, month, day] = parts;
+  return `${day}-${month}-${year}`;
+};
+
+// Converts DD-MM-YYYY to YYYY-MM-DD
+const formatDateToYYYYMMDD = (ddmmyyyyString) => {
+  if (!ddmmyyyyString || !/^\d{2}-\d{2}-\d{4}$/.test(ddmmyyyyString)) return ddmmyyyyString; // Return original if not valid DD-MM-YYYY
+  const parts = ddmmyyyyString.split('-');
+  if (parts.length !== 3) return ddmmyyyyString;
+  const [day, month, year] = parts;
+  return `${year}-${month}-${day}`;
+};
+
 
 // --- Admin Schema Definition Form Component ---
 const DynamicDocumentForm = () => {
@@ -46,7 +65,7 @@ const DynamicDocumentForm = () => {
   const [loading, setLoading] = useState(false);
 
   // State for submission status and message
-  const [submitStatus, setSubmitStatus] = useState("idle"); 
+  const [submitStatus, setSubmitStatus] = useState("idle");
   const [statusMessage, setStatusMessage] = useState("");
 
   // Handle changes for main schema details
@@ -68,7 +87,6 @@ const DynamicDocumentForm = () => {
 
     if (type === "checkbox") {
       fieldToUpdate[name] = checked;
-      // If 'is_unique_identifier' is unchecked, clear 'unique_identifier_prompt'
       if (name === "is_unique_identifier" && !checked) {
         fieldToUpdate.unique_identifier_prompt = "";
       }
@@ -84,7 +102,7 @@ const DynamicDocumentForm = () => {
       if (newState.fields && newState.fields[index]) {
         delete newState.fields[index][name];
         if (name === "is_unique_identifier" && !checked) {
-            delete newState.fields[index].unique_identifier_prompt; // Clear prompt error too
+            delete newState.fields[index].unique_identifier_prompt;
         }
         if (Object.keys(newState.fields[index]).length === 0) {
           delete newState.fields[index];
@@ -110,8 +128,8 @@ const DynamicDocumentForm = () => {
         options: [], 
         min_value: "", 
         max_value: "", 
-        is_unique_identifier: false, // New field
-        unique_identifier_prompt: "", // New field
+        is_unique_identifier: false,
+        unique_identifier_prompt: "",
       },
     ]);
   };
@@ -122,14 +140,13 @@ const DynamicDocumentForm = () => {
     setValidationErrors((prev) => {
       const newState = { ...prev };
       if (newState.fields && newState.fields.length > index) {
-        // Create a new array for field errors, removing the one at the specified index
         const updatedFieldErrors = [...(newState.fields || [])];
         updatedFieldErrors.splice(index, 1);
         
         if (updatedFieldErrors.length > 0) {
             newState.fields = updatedFieldErrors;
         } else {
-            delete newState.fields; // Remove fields error object if no field errors remain
+            delete newState.fields;
         }
       }
       return newState;
@@ -186,7 +203,7 @@ const DynamicDocumentForm = () => {
       isValid = false;
     }
 
-    const fieldErrors = fields.map((field, index) => { // Use map to keep indices aligned
+    const fieldErrors = fields.map((field) => { 
       const currentFieldErrors = {};
       if (!field.key.trim()) currentFieldErrors.key = "Key is required.";
       if (field.key.trim() && !/^[a-z0-9_]+$/.test(field.key.trim())) {
@@ -199,7 +216,7 @@ const DynamicDocumentForm = () => {
       if ((field.type === "select" || field.type === "multiselect") && (!field.options || field.options.length === 0)) {
         currentFieldErrors.options = "Options are required for select/multiselect types (comma-separated).";
       }
-
+      
       const applicableTypesForMinMax = ["text", "textarea", "number", "date", "datetime", "time"];
       if (applicableTypesForMinMax.includes(field.type)) {
           if (field.min_value === undefined || field.min_value === null || String(field.min_value).trim() === '') {
@@ -210,19 +227,35 @@ const DynamicDocumentForm = () => {
           }
       }
       
-      if (field.type === "number" && field.min_value !== "" && field.max_value !== "") {
+      if (field.type === "number" && field.min_value && field.max_value) {
         const minNum = parseFloat(field.min_value);
         const maxNum = parseFloat(field.max_value);
         if (isNaN(minNum) || isNaN(maxNum)) {
-          // currentFieldErrors.min_value = currentFieldErrors.max_value = 'Must be valid numbers.';
+          // Errors for non-numeric min/max would ideally be caught by input type or more specific validation
         } else if (minNum > maxNum) {
           currentFieldErrors.min_value = "Min value cannot be greater than max value.";
         }
       }
 
-      // Validations for unique identifier fields
+      if (field.type === "date" && field.min_value && field.max_value) {
+        try {
+            const minDate = new Date(formatDateToYYYYMMDD(field.min_value));
+            const maxDate = new Date(formatDateToYYYYMMDD(field.max_value));
+            // Check if dates are valid after conversion
+            if (isNaN(minDate.getTime()) || isNaN(maxDate.getTime())) {
+                // Handle invalid date strings for min/max if necessary
+                // currentFieldErrors.min_value = "Invalid Min Date format."; // Or similar
+            } else if (minDate > maxDate) {
+                currentFieldErrors.min_value = "Min Date cannot be after Max Date.";
+            }
+        } catch (e) {
+            console.warn("Error parsing min/max date for validation:", e);
+        }
+      }
+
+
       if (field.is_unique_identifier === true) {
-        uniqueIdentifierFound = true; // Mark that at least one unique identifier is defined
+        uniqueIdentifierFound = true; 
         if (field.type !== "text") {
           currentFieldErrors.is_unique_identifier = "Unique identifier field must be of type 'text'.";
         }
@@ -238,17 +271,15 @@ const DynamicDocumentForm = () => {
       return currentFieldErrors;
     });
 
-    if (!uniqueIdentifierFound && fields.length > 0) { // Only enforce if fields are defined
+    if (!uniqueIdentifierFound && fields.length > 0) { 
         errors.form = "At least one field must be marked as a unique identifier.";
         isValid = false;
     }
     
-    // Check if any field has errors before assigning to errors.fields
     const hasFieldSpecificErrors = fieldErrors.some(err => Object.keys(err).length > 0);
     if (hasFieldSpecificErrors) {
         errors.fields = fieldErrors;
     }
-
 
     setValidationErrors(errors);
     return isValid;
@@ -257,7 +288,7 @@ const DynamicDocumentForm = () => {
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setValidationErrors({}); // Clear previous errors
+    setValidationErrors({}); 
     setSubmitStatus("idle");
     setStatusMessage("");
 
@@ -265,11 +296,18 @@ const DynamicDocumentForm = () => {
       console.log("Form validation failed. Showing errors.");
       setSubmitStatus("error");
       setStatusMessage("Please fix the errors in the form before submitting.");
-      // Scroll to the first error
       const firstErrorKey = Object.keys(validationErrors)[0];
-      if (firstErrorKey) {
+      if (firstErrorKey && validationErrors[firstErrorKey]) { // Check if error message exists
           const element = document.getElementById(firstErrorKey) || document.getElementsByName(firstErrorKey)[0];
           element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (validationErrors.fields) { // Check for first field error
+          const firstFieldErrorIndex = validationErrors.fields.findIndex(fErr => Object.keys(fErr).length > 0);
+          if (firstFieldErrorIndex !== -1) {
+              const firstFieldErrorKey = Object.keys(validationErrors.fields[firstFieldErrorIndex])[0];
+              const elementId = `field${firstFieldErrorKey.charAt(0).toUpperCase() + firstFieldErrorKey.slice(1)}_${firstFieldErrorIndex}`; // e.g. fieldKey_0
+              const element = document.getElementById(elementId);
+              element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
       }
       return;
     }
@@ -282,19 +320,70 @@ const DynamicDocumentForm = () => {
       schema_id: schemaDetails.schema_id.trim(),
       name: schemaDetails.name.trim(),
       description: schemaDetails.description.trim(),
-      fields: fields.map((field) => ({
-        key: field.key.trim(),
-        label: field.label.trim(),
-        prompt: field.prompt.trim(),
-        type: field.type,
-        required: field.required,
-        options: field.options && field.options.length > 0 ? field.options : undefined,
-        min_value: String(field.min_value).trim(), // Ensure it's a string
-        max_value: String(field.max_value).trim(), // Ensure it's a string
-        is_unique_identifier: field.is_unique_identifier || false,
-        unique_identifier_prompt: field.is_unique_identifier ? String(field.unique_identifier_prompt || '').trim() : undefined,
-      })),
+      fields: fields.map((field) => { // 'field' is the parameter for this first map callback
+        // This 'valueForSubmission' is not actually used in the returned object for schema definition.
+        // The 'field.value' in the `fields` state holds the admin's input for min_value, max_value, etc.
+        // not a default data value for the schema field itself.
+        // let valueForSubmission = field.value; 
+        // if (field.type === "date" && field.value) {
+        //   valueForSubmission = formatDateToDDMMYYYY(field.value);
+        // }
+
+        return {
+          key: field.key.trim(),
+          label: field.label.trim(),
+          prompt: field.prompt.trim(),
+          type: field.type,
+          required: field.required,
+          options: field.options && field.options.length > 0 ? field.options : undefined,
+          min_value: String(field.min_value || "").trim(), // Send as string, backend handles type
+          max_value: String(field.max_value || "").trim(), // Send as string, backend handles type
+          is_unique_identifier: field.is_unique_identifier || false,
+          unique_identifier_prompt: field.is_unique_identifier ? String(field.unique_identifier_prompt || '').trim() : undefined,
+        };
+      }),
     };
+
+     // Second map to further refine fields if necessary (e.g. default values if min/max are empty)
+     submissionData.fields = submissionData.fields.map(f => { // 'f' is the parameter for this second map callback
+        const { ...rest } = f; // Create a copy to modify
+
+        // If min_value/max_value are not applicable for the type, ensure they are empty strings
+        if (!["text", "textarea", "number", "date", "datetime", "time"].includes(f.type)) {
+            rest.min_value = "";
+            rest.max_value = "";
+        } else {
+            // For applicable types, if they are still the placeholder defaults from the first map AND
+            // the original input was empty, ensure they are empty strings.
+            // The first map already handles String(field.min_value || "").trim()
+            // This logic might be redundant or could be simplified depending on desired default behavior.
+            // Example: if admin leaves number min_value blank, it becomes "" not "0".
+             if (rest.min_value === "0" && String(fields.find(origField => origField.key === f.key)?.min_value || "").trim() === "") {
+                 rest.min_value = "";
+             }
+             if (rest.max_value === "100000000000000000000000" && String(fields.find(origField => origField.key === f.key)?.max_value || "").trim() === "") {
+                 rest.max_value = "";
+             }
+        }
+        // For date types, ensure min_value and max_value are sent in DD-MM-YYYY if that's the convention for storing schema definitions
+        // The admin inputs them into text or date fields. If they are date pickers, they are YYYY-MM-DD.
+        // If they are text fields, they are as-typed.
+        // The current code sends String(field.min_value || "").trim() which is the as-typed value.
+        // If admin is expected to type DD-MM-YYYY for date min/max, then this is correct.
+        // If admin uses a date picker for min/max (type="date"), then field.min_value would be YYYY-MM-DD.
+        // Let's assume for schema definition, we store min/max for dates as DD-MM-YYYY if provided in that format by admin.
+        // The `getMinMaxValueInputType` makes the min/max inputs themselves date pickers.
+        // So, `field.min_value` for a date type's min_value field will be YYYY-MM-DD.
+        // We need to convert it to DD-MM-YYYY for submission if that's the desired storage format.
+        if (f.type === "date") {
+            if (rest.min_value) rest.min_value = formatDateToDDMMYYYY(rest.min_value); // Convert YYYY-MM-DD from input to DD-MM-YYYY
+            if (rest.max_value) rest.max_value = formatDateToDDMMYYYY(rest.max_value); // Convert YYYY-MM-DD from input to DD-MM-YYYY
+        }
+
+
+        return rest;
+    });
+
 
     try {
       const response = await axiosInstance.post(
@@ -313,13 +402,12 @@ const DynamicDocumentForm = () => {
         setStatusMessage(
           `An error occurred: ${error.response.data.message || error.message}`
         );
-        if (error.response.data.errors) { // Handle structured validation errors from backend
+        if (error.response.data.errors) { 
             const backendErrors = {};
             error.response.data.errors.forEach(err => {
-                // This needs to map backend error paths to frontend state structure
-                // Example: if backend returns error for "fields[0].key"
-                // For simplicity, just showing the first error for now
-                if (!backendErrors.form) backendErrors.form = err;
+                // This is a simplified error display. For field-specific errors from backend,
+                // you'd need to parse err.path or err.param to map to validationErrors.fields[index].key
+                if (!backendErrors.form) backendErrors.form = err.msg || err; // Adjust based on backend error structure
             });
             setValidationErrors(prev => ({...prev, ...backendErrors}));
         }
@@ -333,13 +421,14 @@ const DynamicDocumentForm = () => {
     }
   };
 
+  // Helper to get input type for min/max fields based on selected field type
   const getMinMaxValueInputType = (fieldType) => {
     switch (fieldType) {
       case "number": return "number";
-      case "date": return "date";
+      case "date": return "date"; // Admin will use date picker, value is YYYY-MM-DD
       case "datetime": return "datetime-local";
       case "time": return "time";
-      default: return "text";
+      default: return "text"; // For text/textarea, min/max are lengths
     }
   };
 
@@ -369,13 +458,13 @@ const DynamicDocumentForm = () => {
                 <Card.Body>
                     <Row>
                     <Col md={4}>
-                        <Form.Group className="mb-3" controlId="schema_id"> {/* Changed ID */}
+                        <Form.Group className="mb-3" controlId="schema_id_form_control"> {/* Unique controlId */}
                         <Form.Label>
                             Schema ID <span className="text-danger">*</span>
                         </Form.Label>
                         <Form.Control
                             type="text"
-                            name="schema_id"
+                            name="schema_id" // Matches state key
                             value={schemaDetails.schema_id}
                             onChange={handleSchemaDetailsChange}
                             isInvalid={!!validationErrors.schema_id}
@@ -387,13 +476,13 @@ const DynamicDocumentForm = () => {
                         </Form.Group>
                     </Col>
                     <Col md={8}>
-                        <Form.Group className="mb-3" controlId="name"> {/* Changed ID */}
+                        <Form.Group className="mb-3" controlId="name_form_control"> {/* Unique controlId */}
                         <Form.Label>
                             Document Name <span className="text-danger">*</span>
                         </Form.Label>
                         <Form.Control
                             type="text"
-                            name="name"
+                            name="name" // Matches state key
                             value={schemaDetails.name}
                             onChange={handleSchemaDetailsChange}
                             isInvalid={!!validationErrors.name}
@@ -405,13 +494,13 @@ const DynamicDocumentForm = () => {
                         </Form.Group>
                     </Col>
                     </Row>
-                    <Form.Group className="mb-3" controlId="description"> {/* Changed ID */}
+                    <Form.Group className="mb-3" controlId="description_form_control"> {/* Unique controlId */}
                     <Form.Label>
                         Description <span className="text-danger">*</span>
                     </Form.Label>
                     <Form.Control
                         as="textarea"
-                        name="description"
+                        name="description" // Matches state key
                         value={schemaDetails.description}
                         onChange={handleSchemaDetailsChange}
                         isInvalid={!!validationErrors.description}
@@ -428,9 +517,20 @@ const DynamicDocumentForm = () => {
                 <Card className="mb-4">
                 <Card.Header>Document Fields</Card.Header>
                 <Card.Body>
-                    {fields.map((field, index) => {
-                    const isMinMaxApplicable = ["text", "textarea", "number", "date", "datetime", "time"].includes(field.type);
+                    {fields.map((fieldItem, index) => { // Changed 'field' to 'fieldItem' to avoid conflict
+                    const isMinMaxApplicable = ["text", "textarea", "number", "date", "datetime", "time"].includes(fieldItem.type);
                     const fieldErrorObject = validationErrors.fields && validationErrors.fields[index] ? validationErrors.fields[index] : {};
+                    
+                    // For min/max attributes on date inputs, ensure they are YYYY-MM-DD
+                    // The value in fieldItem.min_value is what the admin types for the schema definition
+                    let minDateForInput = fieldItem.min_value;
+                    let maxDateForInput = fieldItem.max_value;
+                    // If the admin is using a date picker to *define* the min/max for a date field in the schema
+                    if (getMinMaxValueInputType(fieldItem.type) === "date") {
+                         minDateForInput = fieldItem.min_value; // This is already YYYY-MM-DD from the input
+                         maxDateForInput = fieldItem.max_value; // This is already YYYY-MM-DD from the input
+                    }
+
 
                     return (
                         <Card key={index} className="mb-3 p-3 border field-definition-item">
@@ -444,7 +544,7 @@ const DynamicDocumentForm = () => {
                                 onClick={() => handleRemoveField(index)}
                                 size="sm"
                                 className="float-end"
-                                aria-label={`Remove field ${field.label || index + 1}`}
+                                aria-label={`Remove field ${fieldItem.label || index + 1}`}
                             >
                                 <FaTrashAlt/> Remove
                             </Button>
@@ -454,7 +554,7 @@ const DynamicDocumentForm = () => {
                             <Col md={6}>
                             <Form.Group className="mb-3" controlId={`fieldKey_${index}`}>
                                 <Form.Label>Field Key <span className="text-danger">*</span></Form.Label>
-                                <Form.Control type="text" name="key" value={field.key}
+                                <Form.Control type="text" name="key" value={fieldItem.key}
                                 onChange={(e) => handleFieldChange(index, e)}
                                 isInvalid={!!fieldErrorObject.key} placeholder="e.g., aadhaar_number"/>
                                 <Form.Control.Feedback type="invalid">{fieldErrorObject.key}</Form.Control.Feedback>
@@ -463,7 +563,7 @@ const DynamicDocumentForm = () => {
                             <Col md={6}>
                             <Form.Group className="mb-3" controlId={`fieldLabel_${index}`}>
                                 <Form.Label>Field Label <span className="text-danger">*</span></Form.Label>
-                                <Form.Control type="text" name="label" value={field.label}
+                                <Form.Control type="text" name="label" value={fieldItem.label}
                                 onChange={(e) => handleFieldChange(index, e)}
                                 isInvalid={!!fieldErrorObject.label} placeholder="e.g., Aadhaar Number"/>
                                 <Form.Control.Feedback type="invalid">{fieldErrorObject.label}</Form.Control.Feedback>
@@ -472,7 +572,7 @@ const DynamicDocumentForm = () => {
                         </Row>
                         <Form.Group className="mb-3" controlId={`fieldPrompt_${index}`}>
                             <Form.Label>Prompt <span className="text-danger">*</span></Form.Label>
-                            <Form.Control type="text" name="prompt" value={field.prompt}
+                            <Form.Control type="text" name="prompt" value={fieldItem.prompt}
                             onChange={(e) => handleFieldChange(index, e)}
                             isInvalid={!!fieldErrorObject.prompt} placeholder="e.g., Enter your 12-digit Aadhaar number"/>
                             <Form.Control.Feedback type="invalid">{fieldErrorObject.prompt}</Form.Control.Feedback>
@@ -481,23 +581,23 @@ const DynamicDocumentForm = () => {
                             <Col md={4}>
                             <Form.Group className="mb-3" controlId={`fieldType_${index}`}>
                                 <Form.Label>Type <span className="text-danger">*</span></Form.Label>
-                                <Form.Select name="type" value={field.type} onChange={(e) => handleFieldChange(index, e)}
+                                <Form.Select name="type" value={fieldItem.type} onChange={(e) => handleFieldChange(index, e)}
                                 isInvalid={!!fieldErrorObject.type}>
                                 {FIELD_TYPES.map((type) => (<option key={type} value={type}>{type}</option>))}
                                 </Form.Select>
                                 <Form.Control.Feedback type="invalid">{fieldErrorObject.type}</Form.Control.Feedback>
                             </Form.Group>
                             </Col>
-                            <Col md={4} className="d-flex align-items-center pt-3"> {/* Adjusted for alignment */}
+                            <Col md={4} className="d-flex align-items-center pt-3"> 
                                 <Form.Group controlId={`fieldRequired_${index}`} className="mb-3">
                                     <Form.Check type="switch" label="Required" name="required"
-                                    checked={field.required} onChange={(e) => handleFieldChange(index, e)}/>
+                                    checked={fieldItem.required} onChange={(e) => handleFieldChange(index, e)}/>
                                 </Form.Group>
                             </Col>
                              <Col md={4} className="d-flex align-items-center pt-3">
                                 <Form.Group controlId={`fieldIsUniqueIdentifier_${index}`} className="mb-3">
                                     <Form.Check type="switch" label={<><FaKey className="me-1"/> Is Unique Identifier?</>} name="is_unique_identifier"
-                                    checked={field.is_unique_identifier} onChange={(e) => handleFieldChange(index, e)}
+                                    checked={fieldItem.is_unique_identifier} onChange={(e) => handleFieldChange(index, e)}
                                     isInvalid={!!fieldErrorObject.is_unique_identifier}
                                     title="Mark if this field can uniquely identify the document (e.g., Aadhaar No.). Must be a 'text' type and 'Required'."/>
                                      <Form.Control.Feedback type="invalid">{fieldErrorObject.is_unique_identifier}</Form.Control.Feedback>
@@ -505,10 +605,10 @@ const DynamicDocumentForm = () => {
                             </Col>
                         </Row>
 
-                        {field.is_unique_identifier && (
+                        {fieldItem.is_unique_identifier && (
                             <Form.Group className="mb-3" controlId={`fieldUniqueIdentifierPrompt_${index}`}>
                                 <Form.Label>Unique Identifier Prompt <span className="text-danger">*</span></Form.Label>
-                                <Form.Control type="text" name="unique_identifier_prompt" value={field.unique_identifier_prompt}
+                                <Form.Control type="text" name="unique_identifier_prompt" value={fieldItem.unique_identifier_prompt}
                                 onChange={(e) => handleFieldChange(index, e)}
                                 isInvalid={!!fieldErrorObject.unique_identifier_prompt}
                                 placeholder="e.g., Enter 12-digit number without spaces"/>
@@ -516,10 +616,10 @@ const DynamicDocumentForm = () => {
                             </Form.Group>
                         )}
 
-                        {(field.type === "select" || field.type === "multiselect") && (
+                        {(fieldItem.type === "select" || fieldItem.type === "multiselect") && (
                             <Form.Group className="mb-3" controlId={`fieldOptions_${index}`}>
                             <Form.Label>Options (comma-separated) <span className="text-danger">*</span></Form.Label>
-                            <Form.Control type="text" value={Array.isArray(field.options) ? field.options.join(", ") : ""}
+                            <Form.Control type="text" value={Array.isArray(fieldItem.options) ? fieldItem.options.join(", ") : ""}
                                 onChange={(e) => handleOptionsChange(index, e)}
                                 isInvalid={!!fieldErrorObject.options}
                                 placeholder="Option 1, Option 2, Option 3"/>
@@ -532,20 +632,28 @@ const DynamicDocumentForm = () => {
                                 <Col md={6}>
                                 <Form.Group className="mb-3" controlId={`fieldMinValue_${index}`}>
                                     <Form.Label>Min Value/Length <span className="text-danger">*</span></Form.Label>
-                                    <Form.Control type={getMinMaxValueInputType(field.type)} name="min_value" value={field.min_value}
-                                    onChange={(e) => handleFieldChange(index, e)}
-                                    isInvalid={!!fieldErrorObject.min_value}
-                                    step={field.type === "number" ? "any" : undefined}/>
+                                    <Form.Control 
+                                        type={getMinMaxValueInputType(fieldItem.type)} 
+                                        name="min_value" 
+                                        value={fieldItem.min_value} // Value admin types for schema definition
+                                        onChange={(e) => handleFieldChange(index, e)}
+                                        isInvalid={!!fieldErrorObject.min_value}
+                                        step={fieldItem.type === "number" ? "any" : undefined}
+                                    />
                                     <Form.Control.Feedback type="invalid">{fieldErrorObject.min_value}</Form.Control.Feedback>
                                 </Form.Group>
                                 </Col>
                                 <Col md={6}>
                                 <Form.Group className="mb-3" controlId={`fieldMaxValue_${index}`}>
                                     <Form.Label>Max Value/Length <span className="text-danger">*</span></Form.Label>
-                                    <Form.Control type={getMinMaxValueInputType(field.type)} name="max_value" value={field.max_value}
-                                    onChange={(e) => handleFieldChange(index, e)}
-                                    isInvalid={!!fieldErrorObject.max_value}
-                                    step={field.type === "number" ? "any" : undefined}/>
+                                    <Form.Control 
+                                        type={getMinMaxValueInputType(fieldItem.type)} 
+                                        name="max_value" 
+                                        value={fieldItem.max_value} // Value admin types for schema definition
+                                        onChange={(e) => handleFieldChange(index, e)}
+                                        isInvalid={!!fieldErrorObject.max_value}
+                                        step={fieldItem.type === "number" ? "any" : undefined}
+                                    />
                                     <Form.Control.Feedback type="invalid">{fieldErrorObject.max_value}</Form.Control.Feedback>
                                 </Form.Group>
                                 </Col>

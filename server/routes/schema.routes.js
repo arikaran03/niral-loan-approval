@@ -40,7 +40,6 @@ const upload = multer({
 
 router.post(
     "/schema-definition",
-    requireRole(['admin', 'manager']), 
     createSchemaDefinition
 );
 
@@ -70,7 +69,7 @@ router.get(
 
 router.post(
   "/submission",
-  requireRole(['user', 'applicant']), 
+  requireRole(['admin', 'manager', 'staff', 'user', 'applicant']), 
   upload.any(), 
   submitDocumentData
 );

@@ -24,89 +24,66 @@ const extractExpectedJsonObject = (text) => {
   if (!text) return null;
 
   // Attempt to find the start of the JSON object `{"entities": [`
+  // This is a common pattern if the LLM adds prefixes/suffixes despite instructions.
   const jsonStartMatch = text.match(/\{\s*"entities"\s*:\s*\[/);
-  if (!jsonStartMatch) {
-    console.warn("Did not find expected '{\"entities\": [' start in the text.");
-    // Try parsing the whole string as a last resort, maybe the LLM ignored prefix instructions
-    try {
-      const parsed = JSON.parse(text);
-      if (
-        parsed &&
-        Array.isArray(parsed.entities) &&
-        typeof parsed.doc_name === "string"
-      ) {
-        console.log(
-          "Parsed whole string successfully into expected structure."
-        );
-        return parsed;
-      }
-    } catch (e) {
-      console.warn("Could not parse the whole text as JSON either.");
-      return null;
-    }
-    return null; // Did not find the start marker and couldn't parse whole string
+  
+  let jsonCandidate = text; // Default to parsing the whole text
+
+  if (jsonStartMatch) {
+    // If a clear start is found, try parsing from there.
+    // This helps if there's leading non-JSON text.
+    const startIndex = jsonStartMatch.index;
+    jsonCandidate = text.substring(startIndex);
+    console.log("Attempting to parse from detected JSON start.");
+  } else {
+    console.warn("Did not find typical '{\"entities\": [' start. Will attempt to parse the whole text.");
   }
 
-  // Find the substring starting from the detected start
-  const startIndex = jsonStartMatch.index;
-  const jsonCandidate = text.substring(startIndex);
-
-  // Try to parse the candidate substring. This is still brittle if there's trailing text.
-  // A more robust approach might involve finding matching brackets, but can be complex.
   try {
     const parsed = JSON.parse(jsonCandidate);
     // Validate the structure after parsing
     if (
       parsed &&
       Array.isArray(parsed.entities) &&
-      typeof parsed.doc_name === "string"
+      typeof parsed.doc_name === "string" &&
+      parsed.entities.every(
+        (item) =>
+          item && typeof item.key === "string" && item.hasOwnProperty("value")
+      )
     ) {
-      // Further validation on entities array elements
-      if (
-        parsed.entities.every(
-          (item) =>
-            item && typeof item.key === "string" && item.hasOwnProperty("value")
-        )
-      ) {
-        console.log("Successfully parsed substring into expected structure.");
-        return parsed;
-      } else {
-        console.warn(
-          "Parsed object, but 'entities' array has incorrect item structure."
-        );
-      }
+      console.log("Successfully parsed candidate JSON into expected structure.");
+      return parsed;
     } else {
       console.warn(
-        "Parsed object, but it doesn't match expected structure {entities: [], doc_name: string}."
+        "Parsed JSON, but it doesn't match expected structure {entities: Array, doc_name: string} or entities items are malformed. Parsed:", parsed
       );
     }
   } catch (e) {
-    console.warn(
-      "Could not parse substring starting with '{ entities: [' as JSON:",
-      e
-    );
-    // Try parsing the whole string again as a fallback if substring parsing failed
-    try {
-      const parsed = JSON.parse(text);
-      if (
-        parsed &&
-        Array.isArray(parsed.entities) &&
-        typeof parsed.doc_name === "string" &&
-        parsed.entities.every(
-          (item) =>
-            item && typeof item.key === "string" && item.hasOwnProperty("value")
-        )
-      ) {
-        console.log(
-          "Parsed whole string successfully into expected structure (fallback)."
-        );
-        return parsed;
-      }
-    } catch (e2) {
-      console.warn("Could not parse the whole text as JSON either (fallback).");
+    console.warn(`Could not parse candidate JSON (Source: ${jsonStartMatch ? 'substring' : 'whole text'}):`, e.message);
+    // If parsing a substring failed, and we haven't already tried the whole text, try it now.
+    if (jsonStartMatch && jsonCandidate !== text) {
+        console.log("Fallback: Trying to parse the whole original text as JSON.");
+        try {
+            const parsedWhole = JSON.parse(text);
+             if (
+                parsedWhole &&
+                Array.isArray(parsedWhole.entities) &&
+                typeof parsedWhole.doc_name === "string" &&
+                parsedWhole.entities.every(
+                    (item) =>
+                    item && typeof item.key === "string" && item.hasOwnProperty("value")
+                )
+            ) {
+                console.log("Successfully parsed whole original text into expected structure (fallback).");
+                return parsedWhole;
+            } else {
+                 console.warn("Parsed whole text, but structure is still incorrect (fallback). Parsed:", parsedWhole);
+            }
+        } catch (e2) {
+            console.warn("Could not parse the whole original text as JSON either (fallback):", e2.message);
+        }
     }
   }
-
   return null; // Parsing failed or structure mismatch
 };
 
@@ -114,65 +91,64 @@ export default {
   /**
    * Extracts entities from an uploaded document image using OpenAI Vision.
    * Expects:
-   * - req.file: Uploaded file object from multer (named 'document')
+   * - req.file: Uploaded file object from multer (e.g., named 'file' as per your frontend FormData)
    * - req.body.fields: JSON stringified object like:
    * { "label": "Doc Label", "fields": [{ "key": "field_key", "label": "Field Label", "prompt": "Optional Prompt" }, ...] }
-   * - req.body.docType: String indicating the EXPECTED document type (e.g., 'aadhaar')
+   * - req.body.docType: String indicating the EXPECTED document type (e.g., 'aadhaar_card')
    */
   async extractEntitiesFromImage(req, res) {
-    console.log("Received request for entity extraction.");
+    console.log("Received request for entity extraction (/api/application/extract-entity).");
 
     // 1. Validate Input
     if (!req.file) {
-      return res
-        .status(400)
-        .json({ error: "No document image file uploaded." });
+      console.error("Validation Error: No document image file uploaded.");
+      return res.status(400).json({ error: "No document image file uploaded." });
     }
     if (!req.body.fields) {
+      console.error("Validation Error: Missing required 'fields' data in request body.");
       return res.status(400).json({ error: 'Missing required "fields" data.' });
     }
-    if (!req.body.docType) {
-      return res
-        .status(400)
-        .json({ error: 'Missing required "docType" data.' });
-    } // Expect docType
+    // docType is optional on backend if OpenAI is to determine it, but good for logging/context
+    const expectedDocType = req.body.docType || "Unknown (not provided by client)";
+    console.log(`Processing uploaded document. Client expects type (docType): ${expectedDocType}`);
 
-    let fieldsSchemaArray;
+
+    // Parse the 'fields' JSON string from req.body
+    // This object should contain the schema definition for the fields to extract.
+    let fieldsSchemaFromRequest; // This will be an object like { label: "...", fields: [...] }
+    let fieldsArrayForPrompt;   // This will be the actual array: [...]
     try {
-      const fieldsInput = JSON.parse(req.body.fields);
+      fieldsSchemaFromRequest = JSON.parse(req.body.fields);
       if (
-        !fieldsInput ||
-        !Array.isArray(fieldsInput.fields) ||
-        fieldsInput.fields.some((f) => !f.key || typeof f.key !== "string")
+        !fieldsSchemaFromRequest ||
+        !Array.isArray(fieldsSchemaFromRequest.fields) || // Check for the 'fields' array within the parsed object
+        fieldsSchemaFromRequest.fields.some((f) => !f.key || typeof f.key !== "string")
       ) {
-        throw new Error("Invalid fields format.");
+        console.error("Validation Error: Invalid 'fields' format. Expected JSON string of an object with a 'fields' array.", req.body.fields);
+        throw new Error("Invalid fields format. Must be an object with a 'fields' array, and each field must have a 'key'.");
       }
-      fieldsSchemaArray = fieldsInput.fields;
+      fieldsArrayForPrompt = fieldsSchemaFromRequest.fields;
+      console.log(`Successfully parsed 'fields' from request. Document Label: ${fieldsSchemaFromRequest.label}, Number of fields to extract: ${fieldsArrayForPrompt.length}`);
     } catch (err) {
-      return res
-        .status(400)
-        .json({ error: `Invalid fields format: ${err.message}` });
+      console.error("Error parsing 'fields' JSON string from request body:", err.message);
+      return res.status(400).json({ error: `Invalid 'fields' format in request body: ${err.message}` });
     }
-
-    const expectedDocType = req.body.docType; // The type frontend expects this doc to be
-    console.log(
-      `Processing uploaded document, expected type: ${expectedDocType}`
-    );
 
     try {
       // 2. Prepare Image Data
       const base64Image = req.file.buffer.toString("base64");
       const mimeType = req.file.mimetype;
+      console.log(`Image prepared: ${mimeType}, size: ${req.file.size} bytes`);
 
       // 3. Construct Prompt for OpenAI
-      const fieldDescriptions = fieldsSchemaArray
+      // Use fieldsArrayForPrompt which is the actual array of field definitions
+      const fieldDescriptions = fieldsArrayForPrompt
         .map(
           (f) =>
             `- Key: "${f.key}", Description: "${f.prompt || f.label || f.key}"`
         )
         .join("\n");
 
-      // *** UPDATED SYSTEM PROMPT ***
       const systemPrompt = `You are an advanced entity extraction AI specialized in analyzing official documents.
 Your task is:
 1. Identify the type of document shown in the image (e.g., 'aadhaar', 'pan_card', 'smart_card', 'bank_statement', 'other').
@@ -184,10 +160,9 @@ Your task is:
    }
    - The "entities" array must contain objects, each with a "key" matching EXACTLY one of the requested keys and a "value" holding the extracted text.
    - If a value for a key cannot be found or is not applicable, use an empty string "" or null for its value.
-   - The "doc_name" key must contain a string representing the identified document type (e.g., "aadhaar", "pan_card", "smart_card", "bank_statement", or "other" if unsure/different).
+   - The "doc_name" key must contain a string representing the identified document type (e.g., "aadhaar_card", "pan_card", "smart_card", "bank_statement", or "other" if unsure/different).
 ABSOLUTELY NO other text, explanations, apologies, markdown formatting (like \`\`\`json), or introductory/concluding remarks should be included in your response. The response must start directly with '{' and end directly with '}'.`;
 
-      // *** UPDATED USER PROMPT ***
       const userPrompt = `
 Analyze the attached image and perform the following steps according to the system instructions:
 1. Identify the document type.
@@ -198,13 +173,14 @@ Strictly return ONLY the JSON object in the specified format: { "entities": [{ "
 If you cannot find a value for a key, use an empty string "" or null for its value.
 If you are unsure about the document type, use "other" as the value for "doc_name".
 `;
-      // console.log("User Prompt:", userPrompt); // Keep for debugging if needed
+      // console.log("System Prompt:", systemPrompt); // For debugging
+      // console.log("User Prompt constructed with field descriptions."); // For debugging
 
       console.log("Sending request to OpenAI Vision (gpt-4o)...");
 
       // 4. Call OpenAI API
       const response = await openai.chat.completions.create({
-        model: "gpt-4.1", // Use the latest model like gpt-4o
+        model: "gpt-4o", // Updated model
         messages: [
           { role: "system", content: systemPrompt },
           {
@@ -215,49 +191,49 @@ If you are unsure about the document type, use "other" as the value for "doc_nam
                 type: "image_url",
                 image_url: {
                   url: `data:${mimeType};base64,${base64Image}`,
-                  detail: "auto",
+                  detail: "auto", // "low" can be used for faster, less detailed analysis if applicable
                 },
               },
             ],
           },
         ],
-        max_tokens: 1500, // Increased slightly for potentially more complex extractions
-        temperature: 0.1, // Low temperature for consistency
-        response_format: { type: "json_object" }, // Explicitly request JSON output if model supports it
+        max_tokens: 1500,
+        temperature: 0.1,
+        response_format: { type: "json_object" }, // Request JSON output
       });
 
       console.log("OpenAI Response Received.");
       const messageContent = response.choices[0]?.message?.content;
 
       if (!messageContent) {
+        console.error("OpenAI response was empty or invalid (no message content).");
         throw new Error("OpenAI response was empty or invalid.");
       }
-      console.log("Raw Message Content:", messageContent);
+      console.log("Raw Message Content from OpenAI:", messageContent);
 
-      // 5. Parse the Response (expecting JSON object directly due to response_format)
+      // 5. Parse the Response
+      // response_format: { type: "json_object" } should ensure messageContent is a valid JSON string.
       let extractedData;
       try {
         extractedData = JSON.parse(messageContent);
+        console.log("Successfully parsed messageContent with JSON.parse().");
       } catch (parseError) {
-        console.error(
-          "Failed to parse OpenAI response content as JSON object:",
-          parseError
+        console.warn(
+          "Failed to parse OpenAI response content directly as JSON object, trying fallback helper. Error:",
+          parseError.message
         );
-        console.error("Content was:", messageContent);
-        // Try the helper as a fallback in case response_format didn't work perfectly
+        // Fallback parsing if direct parse fails (e.g., if LLM added prefixes/suffixes despite response_format)
         extractedData = extractExpectedJsonObject(messageContent);
         if (!extractedData) {
+          console.error("Fallback parsing also failed. OpenAI response did not yield valid JSON matching the expected structure.");
           throw new Error(
-            `OpenAI did not return valid JSON matching the expected structure. Response: ${messageContent.substring(
-              0,
-              200
-            )}...`
+            `OpenAI did not return valid JSON matching the expected structure. Response snippet: ${messageContent.substring(0,200)}...`
           );
         }
-        console.log("Parsed using fallback helper.");
+        console.log("Parsed OpenAI response using fallback helper.");
       }
 
-      // 6. Validate JSON structure
+      // 6. Validate Parsed JSON structure
       if (
         !extractedData ||
         typeof extractedData !== "object" ||
@@ -265,10 +241,10 @@ If you are unsure about the document type, use "other" as the value for "doc_nam
         typeof extractedData.doc_name !== "string"
       ) {
         console.error(
-          "Parsed JSON does not match expected structure {entities: [], doc_name: string}:",
+          "Parsed JSON does not match expected structure {entities: Array, doc_name: string}. Received:",
           extractedData
         );
-        throw new Error("OpenAI response JSON structure is incorrect.");
+        throw new Error("OpenAI response JSON structure is incorrect after parsing.");
       }
       if (
         !extractedData.entities.every(
@@ -277,38 +253,76 @@ If you are unsure about the document type, use "other" as the value for "doc_nam
         )
       ) {
         console.error(
-          "Parsed JSON 'entities' array has incorrect item structure:",
+          "Parsed JSON 'entities' array has incorrect item structure. Received entities:",
           extractedData.entities
         );
         throw new Error(
-          "OpenAI response JSON structure is incorrect within the entities array."
+          "OpenAI response JSON structure is incorrect within the 'entities' array items."
         );
       }
 
-      console.log("Successfully parsed response object:", extractedData);
+      console.log("Successfully validated parsed response object:", extractedData);
 
-      // 7. Optional: Compare detected doc_name with expectedDocType (can also be done on frontend)
-      // if (extractedData.doc_name !== expectedDocType) {
-      //     console.warn(`Document type mismatch detected by AI. Expected: ${expectedDocType}, Detected: ${extractedData.doc_name}`);
-      //     // You might choose to return an error or just pass the detected type along
-      //     // return res.status(400).json({ error: `Document type mismatch. Expected ${expectedDocType}, but AI detected ${extractedData.doc_name}` });
-      // }
+      // 7. Optional: Log mismatch if detected doc_name differs from client's expectedDocType
+      if (expectedDocType !== "Unknown (not provided by client)" && extractedData.doc_name !== expectedDocType) {
+          console.warn(`Document type mismatch. Client expected: ${expectedDocType}, AI detected: ${extractedData.doc_name}`);
+          // Depending on requirements, you might modify the response or add a flag.
+          // For now, we send what the AI detected.
+      }
 
-      // 8. Send Success Response (including detected doc_name)
-      return res.status(200).json(extractedData); // Send the full object { entities: [], doc_name: "..." }
+      // 8. Send Success Response
+      // The frontend expects { extracted_data: { ... original OpenAI response ... }, unique_keys: { ... } }
+      // The current OpenAI response IS the extracted_data part. We need to simulate unique_keys or decide how they are derived.
+      // For now, assuming unique_keys are derived from specific keys in entities.
+      // This part needs to align with how your frontend `processGovDocumentScan` uses `ocrRes.data.unique_keys`.
+
+      const uniqueKeyDefinitions = { // Define which keys from schema are unique identifiers
+        aadhaar_card: ['aadhaar_number'],
+        pan_card: ['pan_number'],
+        // Add other doc types and their unique keys
+      };
+      
+      const unique_keys = {};
+      if (uniqueKeyDefinitions[extractedData.doc_name]) {
+        extractedData.entities.forEach(entity => {
+          if (uniqueKeyDefinitions[extractedData.doc_name].includes(entity.key) && entity.value) {
+            unique_keys[entity.key] = entity.value;
+          }
+        });
+      }
+      
+      console.log("Derived unique keys:", unique_keys);
+
+      // The frontend (DynamicSchemaForm) expects a structure like:
+      // ocrRes.data.extracted_data (this should be the map of key-value pairs for form fields)
+      // ocrRes.data.unique_keys (this should be a map of unique keys and their values)
+      // ocrRes.data.doc_name (implicitly, as the frontend uses schema_id_string for this)
+
+      // Transform OpenAI's entities array into a flat object for `extracted_data`
+      const flatExtractedData = extractedData.entities.reduce((acc, entity) => {
+        acc[entity.key] = entity.value;
+        return acc;
+      }, {});
+
+      const responsePayload = {
+        extracted_data: flatExtractedData, // e.g., { full_name: "...", aadhaar_number: "..." }
+        unique_keys: unique_keys,         // e.g., { aadhaar_number: "..." }
+        doc_name: extractedData.doc_name  // e.g., "aadhaar_card"
+      };
+      
+      console.log("Sending success response to client:", responsePayload);
+      return res.status(200).json(responsePayload);
+
     } catch (error) {
-      console.error("Error during OpenAI entity extraction:", error);
+      console.error("Error during OpenAI entity extraction process:", error);
       if (error instanceof OpenAI.APIError) {
         return res
           .status(error.status || 500)
-          .json({ error: `OpenAI API Error: ${error.message}` });
+          .json({ error: `OpenAI API Error: ${error.name} - ${error.message}` });
       }
-      return res
-        .status(500)
-        .json({
-          error:
-            error.message || "Internal server error during entity extraction.",
-        });
+      // Ensure a default message if error.message is not present
+      const errorMessage = error.message || "Internal server error during entity extraction.";
+      return res.status(500).json({ error: errorMessage });
     }
   },
 };

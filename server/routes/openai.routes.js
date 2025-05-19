@@ -29,7 +29,7 @@ const upload = multer({
 router.post(
     '/extract-entity',
     // authMiddleware.authenticate, // Add authentication if required
-    upload.single('document'), // Middleware to handle single file upload named 'document'
+    upload.single('file'), // Middleware to handle single file upload named 'document'
     openaiController.extractEntitiesFromImage
 );
 

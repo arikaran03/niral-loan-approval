@@ -3,6 +3,7 @@ import express from 'express';
 import multer from 'multer';
 import File from '../database/models/FileModel.js'; // Updated model import
 import { requireRole } from '../middlewares/auth.js'; // Assuming you have a middleware for role checking
+import mongoose from 'mongoose'; // Import mongoose for ObjectId validation
 
 const router = express.Router();
 
@@ -97,9 +98,10 @@ router.get('/:id', async (req, res) => {
 
     res.set('Content-Type', file.contentType);
     // Optional: set Content-Disposition to suggest filename for download
-    // res.set('Content-Disposition', `inline; filename="${file.filename}"`); // For displaying in browser
-    // res.set('Content-Disposition', `attachment; filename="${file.filename}"`); // For forcing download
+    res.set('Content-Disposition', `inline; filename="${file.filename}"`); // For displaying in browser
+    res.set('Content-Disposition', `attachment; filename="${file.filename}"`); // For forcing download
     
+  
     return res.send(file.data);
   } catch (err) {
     console.error('File retrieval error:', err);

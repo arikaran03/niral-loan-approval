@@ -1,128 +1,98 @@
-// --- FieldRenderer.js ---
-// src/components/applicant/applications/FieldRenderer.js
-import React from 'react';
 import PropTypes from 'prop-types';
-import { Form, Row, Col, Spinner, Badge, InputGroup } from 'react-bootstrap';
-import { FaCheckCircle, FaHourglassStart, FaFileUpload, FaLock } from 'react-icons/fa'; 
-import { UserCheck, UserX } from 'lucide-react';
-import { AADHAAR_SCHEMA_ID_CONST, PAN_SCHEMA_ID_CONST } from '../../../constants'; // Adjust the import path as necessary
+import { Row, Col, Form, Badge } from 'react-bootstrap';
+import { Lock } from 'react-bootstrap-icons';
+import { FaCheckCircle, FaExclamationTriangle, FaFileUpload, FaHourglassStart, FaQuestionCircle } from 'react-icons/fa';
+import { Spinner } from 'react-bootstrap';
 
+
+// --- Helper: FieldRenderer (Placeholder if not imported - replace with your actual component) ---
 const FieldRenderer = ({
-    field,
-    sectionData,
-    onFieldChange,
-    onFileChange,
-    sectionName,
-    error,
-    disabled,
-    existingFileUrl,
-    isAutoFilled, 
-    isPotentiallyAutoFill, 
-    showValidationErrors,
-    autoFillSources, 
-    autoFilledDetail, 
-    docValidationStatus, 
-    allDocSchemasForSourceLookup, 
+    field, value, onChange, error, disabled, onFileChange, existingFileUrl,
+    isAutoFilled, isPotentiallyAutoFill, showValidationErrors,
+    autoFillSources, autoFilledDetail, docValidationStatus, allDocSchemasForSourceLookup,
+    requiredDocFiles,
 }) => {
-    const idKey = field.field_id || field.key;
-    const labelKey = field.field_label || field.label;
-    const promptKey = field.field_prompt || field.prompt;
-    const typeKey = field.type;
-    const requiredKey = field.required;
-    const optionsKey = field.options;
-    const minValueKey = field.min_value;
-    const maxValueKey = field.max_value;
+    const { field_id, field_label, type, required, options, field_prompt, min_value, max_value } = field;
+    const label = `${field_label}${required ? ' *' : ''}`;
+    const controlId = `custom_${field_id}`;
 
-    const label = `${labelKey}${requiredKey ? ' *' : ''}`;
-    const controlId = `${sectionName}_${idKey}`;
-    const value = sectionData[idKey];
-
-    const isDisabledByMainLoanAutoFill = sectionName === 'mainLoan' && isAutoFilled && isPotentiallyAutoFill;
-    const finalDisabled = disabled || isDisabledByMainLoanAutoFill;
-    const isReadOnlyVisually = sectionName === 'mainLoan' && isAutoFilled;
-
-    const autoFilledClass = sectionName === 'mainLoan' && isAutoFilled ? 'field-autofilled' : '';
-    const kycAutoFilledClass = (sectionName === 'aadhaar' || sectionName === 'pan') && isAutoFilled ? 'field-autofilled-kyc' : '';
-    const potentiallyAutoFillClass = sectionName === 'mainLoan' && isPotentiallyAutoFill && !isAutoFilled ? 'field-potentially-autofill' : '';
+    const isDisabled = disabled || (isPotentiallyAutoFill && !isAutoFilled);
+    const isReadOnlyVisually = isAutoFilled;
 
     const handleChange = (e) => {
-        if (!finalDisabled) {
-            onFieldChange(sectionName, idKey, e.target.type === 'checkbox' ? e.target.checked : e.target.value);
+        if (!isDisabled) {
+            onChange(field_id, e.target.type === 'checkbox' ? e.target.checked : e.target.value);
         }
     };
 
     const handleFile = (e) => {
         const file = e.target.files ? e.target.files[0] : null;
-        if (onFileChange && !finalDisabled) {
-            onFileChange(sectionName, idKey, file);
+        if (onFileChange && !isDisabled) {
+            onFileChange(field_id, file);
         }
     };
 
-    const renderExistingFileDisplay = () => {
-        if (!existingFileUrl) return null;
-        let d = existingFileUrl;
-        try {
-            d = decodeURIComponent(new URL(existingFileUrl).pathname.split('/').pop()) || d;
-        } catch (_) {
-            if (typeof d === 'string' && d.length > 30) d = d.substring(0, 15) + '...';
-        }
-        return <span className="text-muted d-block mt-1 existing-file-info"><FaCheckCircle size={12} className="me-1 text-success" />Current: {d}</span>;
-    };
+    const renderExistingFile = () => { if (!existingFileUrl) return null; let d = existingFileUrl; try { d = decodeURIComponent(new URL(existingFileUrl).pathname.split('/').pop())||d; } catch (_) { if(typeof d==='string'&&d.length>30) d=d.substring(0,15)+'...';} return <span className="text-muted d-block mt-1 existing-file-info"><FaCheckCircle size={12} className="me-1 text-success"/>Current: {d}</span>; };
 
-    const renderLoanFieldAutoFillSourceInfo = () => {
-        if (sectionName !== 'mainLoan' || !isPotentiallyAutoFill || !autoFillSources || autoFillSources.length === 0 || !allDocSchemasForSourceLookup) {
+    const renderAutoFillSourceInfo = () => {
+        if (!isPotentiallyAutoFill || !autoFillSources || autoFillSources.length === 0 || (!allDocSchemasForSourceLookup?.documentDefinitions && !allDocSchemasForSourceLookup?.aadhaar_card_definition && !allDocSchemasForSourceLookup?.pan_card_definition) ) {
             return null;
         }
-        const getDocInfo = (docSchemaIdFromSource) => { 
-            let docDisplayName = docSchemaIdFromSource;
-            let docKeyForStatus = null; 
-            if (allDocSchemasForSourceLookup.docNameToTypeMap) {
-                for (const [name, type] of Object.entries(allDocSchemasForSourceLookup.docNameToTypeMap)) {
-                    if (type === docSchemaIdFromSource) {
-                        docKeyForStatus = name;
-                        break;
-                    }
-                }
-            }
-            if (docSchemaIdFromSource === AADHAAR_SCHEMA_ID_CONST && allDocSchemasForSourceLookup.aadhaarSchemaDef) {
-                docDisplayName = allDocSchemasForSourceLookup.aadhaarSchemaDef.name;
-            } else if (docSchemaIdFromSource === PAN_SCHEMA_ID_CONST && allDocSchemasForSourceLookup.panSchemaDef) {
-                docDisplayName = allDocSchemasForSourceLookup.panSchemaDef.name;
-            } else if(docKeyForStatus) { 
-                docDisplayName = docKeyForStatus;
-            }
-            let statusText = 'Pending Upload/Verification';
-            let statusIcon = <FaHourglassStart size={10} className="me-1 text-muted" />;
-            const validationState = docKeyForStatus ? docValidationStatus[docKeyForStatus] : null;
-            if (autoFilledDetail && autoFilledDetail.verifiedByDocType === docSchemaIdFromSource) {
-                statusText = 'Auto-filled';
-                statusIcon = <FaCheckCircle size={10} className="me-1 text-success" />;
+        const getDefinition = (docTypeKey) => {
+            if (docTypeKey === 'aadhaar_card' && allDocSchemasForSourceLookup.aadhaar_card_definition) return allDocSchemasForSourceLookup.aadhaar_card_definition;
+            if (docTypeKey === 'pan_card' && allDocSchemasForSourceLookup.pan_card_definition) return allDocSchemasForSourceLookup.pan_card_definition;
+            return allDocSchemasForSourceLookup.documentDefinitions?.[docTypeKey];
+        }
+
+
+        const getDocInfo = (docTypeKeyFromSource) => { 
+            const docDefinition = getDefinition(docTypeKeyFromSource);
+            const docDisplayName = docDefinition?.label || docTypeKeyFromSource;
+            const docKeyForStatus = docTypeKeyFromSource;
+            let statusText = 'Pending Upload';
+            let statusKey = 'pending_upload';
+            let icon = <FaHourglassStart size={10} className="me-1 text-muted" />;
+            const validationState = docValidationStatus[docKeyForStatus];
+            const isUploaded = (requiredDocFiles && requiredDocFiles[docKeyForStatus]) ||
+                               (allDocSchemasForSourceLookup.existingGlobalFileRefs && allDocSchemasForSourceLookup.existingGlobalFileRefs[`reqDoc_${docKeyForStatus}`]);
+
+            if (autoFilledDetail && autoFilledDetail.verifiedByDocType === docTypeKeyFromSource) {
+                statusText = 'Auto-filled'; statusKey = 'autofilled_used';
+                icon = <FaCheckCircle size={10} className="me-1 text-success" />;
             } else if (validationState) {
                 if (validationState.status === 'verified') {
-                    statusText = 'Verified (Data Available)';
-                    statusIcon = <UserCheck size={10} className="me-1 text-secondary" />;
-                } else if (validationState.status === 'validating' || validationState.status === 'db_lookup') {
-                    statusText = 'Validating';
-                    statusIcon = <Spinner as="span" animation="border" size="xs" className="me-1 text-info" />;
-                } else if (validationState.status === 'error' || validationState.status === 'db_match_not_found') {
-                    statusText = 'Verification Error';
-                    statusIcon = <UserX size={10} className="me-1 text-danger" />;
-                } else if (validationState.status === 'submitted') {
-                    statusText = 'Submitted (Pending Verification)';
-                    statusIcon = <FaFileUpload size={10} className="me-1 text-primary" />;
+                    statusText = 'Verified'; statusKey = 'verified_not_used';
+                    icon = <FaCheckCircle size={10} className="me-1 text-secondary" />;
+                } else if (validationState.status === 'validating') {
+                    statusText = 'Validating'; statusKey = 'validating';
+                    icon = <Spinner as="span" animation="border" size="xs" className="me-1 text-info" />;
+                } else if (validationState.status === 'error') {
+                    statusText = 'Error'; statusKey = 'error';
+                    icon = <FaExclamationTriangle size={10} className="me-1 text-danger" />;
+                } else if (isUploaded) {
+                    statusText = 'Uploaded'; statusKey = 'uploaded_pending_verification';
+                    icon = <FaFileUpload size={10} className="me-1 text-primary" />;
                 }
+            } else if (isUploaded) {
+                statusText = 'Uploaded'; statusKey = 'uploaded_pending_verification';
+                icon = <FaFileUpload size={10} className="me-1 text-primary" />;
+            } else if (!docDefinition) { 
+                 statusText = 'Source Info N/A'; statusKey = 'info_na';
+                 icon = <FaQuestionCircle size={10} className="me-1 text-warning" />;
             }
-            return { name: docDisplayName, statusText, icon: statusIcon };
+            return { name: docDisplayName, statusText, icon, statusKey };
         };
+
         return (
             <div className="text-muted small mt-1 autofill-sources-info">
-                <strong className="me-1 small">Sources:</strong>
+                <strong className="me-1 small">Expected from:</strong>
                 {autoFillSources.map((sourceStr, index) => {
-                    const docSchemaId = sourceStr.split('.')[0]; 
-                    const info = getDocInfo(docSchemaId);
+                    const docTypeKey = sourceStr.split('.')[0]; 
+                    const info = getDocInfo(docTypeKey);
                     return (
                         <Badge pill bg="light" text="dark" className="me-1 mb-1 autofill-source-badge" key={index} title={`${info.name}: ${info.statusText}`}>
                             {info.icon} {info.name}
+                            {info.statusKey === 'autofilled_used' && <span className="fw-bold"> (Used)</span>}
                         </Badge>
                     );
                 })}
@@ -130,47 +100,61 @@ const FieldRenderer = ({
         );
     };
 
+    const getAutoFillSourceDocLabel = () => {
+        if (isAutoFilled && autoFilledDetail) {
+            const typeKey = autoFilledDetail.verifiedByDocType;
+            let docDefinition;
+            if (typeKey === 'aadhaar_card' && allDocSchemasForSourceLookup.aadhaar_card_definition) docDefinition = allDocSchemasForSourceLookup.aadhaar_card_definition;
+            else if (typeKey === 'pan_card' && allDocSchemasForSourceLookup.pan_card_definition) docDefinition = allDocSchemasForSourceLookup.pan_card_definition;
+            else docDefinition = allDocSchemasForSourceLookup?.documentDefinitions?.[typeKey];
+            return docDefinition?.label || typeKey;
+        }
+        return "auto-verified source";
+    };
+    
+    const formatDateToYYYYMMDDHelper = (dateStr) => { 
+        if (!dateStr || typeof dateStr !== "string") return dateStr;
+        const match = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (!match) return dateStr; 
+        const [_, day, month, year] = match;
+        return `${year}-${month}-${day}`;
+    };
+
+
     return (
-        <Form.Group 
-            as={Row} 
-            className={`mb-3 field-renderer-group ${autoFilledClass} ${kycAutoFilledClass} ${potentiallyAutoFillClass}`} 
-            controlId={controlId}
-        >
+        <Form.Group as={Row} className={`mb-3 field-renderer-group ${isAutoFilled ? 'field-autofilled' : ''} ${isPotentiallyAutoFill && !isAutoFilled ? 'field-potentially-autofill' : ''}`} controlId={controlId}>
             <Form.Label column sm={4} className="field-label">
                 {label}
-                {sectionName === 'mainLoan' && isAutoFilled && isPotentiallyAutoFill && <FaLock size={12} className="ms-2 text-success autofill-lock-icon" title={`Auto-filled & Verified`} />}
-                {promptKey && <div className="text-muted small fst-italic field-prompt">{promptKey}</div>}
-                {isPotentiallyAutoFill && sectionName === 'mainLoan' && renderLoanFieldAutoFillSourceInfo()}
+                {isAutoFilled && <Lock size={12} className="ms-2 text-success autofill-lock-icon" title={`Auto-filled & Verified by ${getAutoFillSourceDocLabel()}`}/>}
+                {field_prompt && <div className="text-muted small fst-italic field-prompt">{field_prompt}</div>}
+                {isPotentiallyAutoFill && renderAutoFillSourceInfo()}
             </Form.Label>
             <Col sm={8}>
-                {typeKey === 'textarea' ? (
-                    <Form.Control as="textarea" rows={3} value={value || ''} onChange={handleChange} required={requiredKey} disabled={finalDisabled} readOnly={isReadOnlyVisually} className={isReadOnlyVisually ? 'is-autofilled' : ''} minLength={minValueKey} maxLength={maxValueKey} isInvalid={showValidationErrors && !!error} />
-                ) : typeKey === 'select' || typeKey === 'multiselect' ? (
-                    <Form.Select value={value || ''} onChange={handleChange} required={requiredKey} disabled={finalDisabled} className={isReadOnlyVisually ? 'is-autofilled' : ''} isInvalid={showValidationErrors && !!error} multiple={typeKey === 'multiselect'}>
+                {type === 'textarea' ? (
+                    <Form.Control as="textarea" rows={3} value={value || ''} onChange={handleChange} required={required} disabled={isDisabled} readOnly={isReadOnlyVisually} className={isReadOnlyVisually ? 'is-autofilled' : ''} minLength={min_value} maxLength={max_value} isInvalid={showValidationErrors && !!error}/>
+                ) : type === 'select' || type === 'multiselect' ? (
+                    <Form.Select value={value || (type === 'multiselect' ? [] : '')} onChange={handleChange} required={required} disabled={isDisabled} className={isReadOnlyVisually ? 'is-autofilled' : ''} isInvalid={showValidationErrors && !!error} multiple={type === 'multiselect'}>
                         <option value="">-- Select --</option>
-                        {(optionsKey || []).map((opt, i) => {
-                            const optionValue = typeof opt === 'object' ? opt.value : opt;
-                            const optionLabel = typeof opt === 'object' ? opt.label : opt;
-                            return <option key={i} value={optionValue}>{optionLabel}</option>;
-                        })}
+                        {(options || []).map((opt, i) => (<option key={i} value={typeof opt === 'object' ? opt.value : opt}>{typeof opt === 'object' ? opt.label : opt}</option>))}
                     </Form.Select>
-                ) : typeKey === 'checkbox' ? (
-                    <Form.Check className='mt-2' type="checkbox" label={promptKey || 'Confirm'} checked={!!value} onChange={handleChange} disabled={finalDisabled} isInvalid={showValidationErrors && !!error} />
-                ) : typeKey === 'image' || typeKey === 'document' ? (
+                ) : type === 'checkbox' ? (
+                     <Form.Check className='mt-2' type="checkbox" label={field_prompt || 'Confirm'} checked={!!value} onChange={handleChange} disabled={isDisabled} isInvalid={showValidationErrors && !!error}/>
+                ) : type === 'image' || type === 'document' ? (
                     <>
-                        <Form.Control type="file" onChange={handleFile} required={requiredKey && !existingFileUrl} disabled={finalDisabled} accept={typeKey === 'image' ? 'image/jpeg,image/png' : 'application/pdf'} isInvalid={showValidationErrors && !!error} size="sm" />
-                        {renderExistingFileDisplay()}
+                        <Form.Control type="file" onChange={handleFile} required={required && !existingFileUrl} disabled={isDisabled} accept={type === 'image' ? 'image/*' : undefined} isInvalid={showValidationErrors && !!error} size="sm"/>
+                        {renderExistingFile()}
                     </>
                 ) : (
                     <Form.Control
-                        type={typeKey === 'datetime' ? 'datetime-local' : typeKey === 'time' ? 'time' : typeKey === 'date' ? 'date' : typeKey === 'number' ? 'number' : 'text'}
-                        value={value || ''} onChange={handleChange} required={requiredKey} disabled={finalDisabled}
-                        min={typeKey === 'number' ? minValueKey : (typeKey === 'date' || typeKey === 'datetime' ? minValueKey : undefined)}
-                        max={typeKey === 'number' ? maxValueKey : (typeKey === 'date' || typeKey === 'datetime' ? maxValueKey : undefined)}
-                        minLength={typeKey === 'text' ? minValueKey : undefined} maxLength={typeKey === 'text' ? maxValueKey : undefined}
-                        step={typeKey === 'number' ? 'any' : undefined} isInvalid={showValidationErrors && !!error}
-                        readOnly={isReadOnlyVisually} 
-                        className={isReadOnlyVisually ? 'is-autofilled' : ''} 
+                        type={type === 'datetime' ? 'datetime-local' : type === 'time' ? 'time' : type === 'date' ? 'date' : type === 'number' ? 'number' : 'text'}
+                        value={value || ''} onChange={handleChange} required={required} disabled={isDisabled}
+                        min={type === 'number' ? min_value : (type === 'date' ? formatDateToYYYYMMDDHelper(min_value) : (type === 'datetime-local' ? min_value : undefined) )} 
+                        max={type === 'number' ? max_value : (type === 'date' ? formatDateToYYYYMMDDHelper(max_value) : (type === 'datetime-local' ? max_value : undefined) )}
+                        minLength={type === 'text' || type === 'textarea' ? min_value : undefined} 
+                        maxLength={type === 'text' || type === 'textarea' ? max_value : undefined} 
+                        step={type === 'number' ? 'any' : undefined} isInvalid={showValidationErrors && !!error}
+                        readOnly={isReadOnlyVisually}
+                        className={isReadOnlyVisually ? 'is-autofilled' : ''}
                     />
                 )}
                 {showValidationErrors && error && <Form.Control.Feedback type="invalid">{error}</Form.Control.Feedback>}
@@ -178,23 +162,23 @@ const FieldRenderer = ({
         </Form.Group>
     );
 };
-
 FieldRenderer.propTypes = {
-    field: PropTypes.object.isRequired,
-    sectionData: PropTypes.object.isRequired,
-    onFieldChange: PropTypes.func.isRequired,
-    onFileChange: PropTypes.func.isRequired,
-    sectionName: PropTypes.string.isRequired,
-    error: PropTypes.string,
-    disabled: PropTypes.bool,
-    existingFileUrl: PropTypes.string,
-    isAutoFilled: PropTypes.bool,
+    field: PropTypes.object.isRequired, value: PropTypes.any, onChange: PropTypes.func.isRequired,
+    error: PropTypes.string, disabled: PropTypes.bool, onFileChange: PropTypes.func,
+    existingFileUrl: PropTypes.string, isAutoFilled: PropTypes.bool,
     isPotentiallyAutoFill: PropTypes.bool,
     showValidationErrors: PropTypes.bool.isRequired,
     autoFillSources: PropTypes.array,
     autoFilledDetail: PropTypes.object,
     docValidationStatus: PropTypes.object,
-    allDocSchemasForSourceLookup: PropTypes.object,
+    allDocSchemasForSourceLookup: PropTypes.shape({
+        documentDefinitions: PropTypes.object, 
+        aadhaar_card_definition: PropTypes.object, 
+        pan_card_definition: PropTypes.object,     
+        required: PropTypes.array, 
+        existingGlobalFileRefs: PropTypes.object
+    }),
+    requiredDocFiles: PropTypes.object,
 };
 
 export default FieldRenderer;

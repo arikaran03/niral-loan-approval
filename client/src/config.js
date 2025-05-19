@@ -1,7 +1,7 @@
 import axios from "axios";
 
-const BASE_URL = "http://localhost:3001";
-// const BASE_URL = "https://h08bsvj6-3001.inc1.devtunnels.ms";
+// const BASE_URL = "http://localhost:3001";
+const BASE_URL = "https://h08bsvj6-3001.inc1.devtunnels.ms";
 // const BASE_URL = "https://docusift-server.vercel.app";
 
 const APP_NAME = "Team Groove";
