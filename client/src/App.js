@@ -65,6 +65,7 @@ function App() {
             path="applications/:submissionId"
             element={<ApplicationFullDetails />}
           />
+          <Route path="/waiver-application/:waiverSchemeId" element={<WaiverApplicationForm />} />
           <Route path="apply/:loanId" element={<ApplicationForm />} />
 
           {/* Applicant Repayment Routes */}
@@ -74,7 +75,6 @@ function App() {
             element={<LoanRepaymentDetailPage />}
           />
         </Route>
-        <Route path="/waiver-apply/:waiverSchemeId" element={<WaiverApplicationForm />} />
 
         {/* Public Routes */}
 

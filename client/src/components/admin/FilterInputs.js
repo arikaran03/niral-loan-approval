@@ -1,4 +1,3 @@
-import React from 'react';
 import PropTypes from 'prop-types';
 import { Form, Row, Col, Button, InputGroup } from 'react-bootstrap';
 import { FaSearch, FaUser, FaCalendarAlt, FaIdBadge, FaFilter } from 'react-icons/fa';

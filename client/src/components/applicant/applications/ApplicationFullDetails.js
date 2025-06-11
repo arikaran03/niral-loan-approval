@@ -1,7 +1,7 @@
 // src/pages/ApplicationFullDetails.jsx (or components/application/ApplicationFullDetails.jsx)
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { axiosInstance } from '../../../config'; // Adjust path
 import {
@@ -16,7 +16,6 @@ import {
   Alert,
   Badge,
   ListGroup,
-  ButtonGroup // Keep ButtonGroup if actions are added back
 } from 'react-bootstrap';
 import {
   ArrowLeft,
@@ -28,36 +27,37 @@ import {
   Hash,
   DollarSign,
   Calendar,
-  Info,
   ListChecks,
-  FileBadge,
   History,
-  AlertTriangle, // Icon for image error
-  Image as ImageIcon // Icon for image placeholder
+  AlertTriangle
 } from 'lucide-react'; // Using Lucide icons
 import { motion } from 'framer-motion';
 import { format, parseISO, isValid } from 'date-fns';
 import moment from 'moment'; // Keep moment for history 'fromNow'
 import './ApplicationFullDetails.css'; // Import custom styles
+import { FaRupeeSign } from 'react-icons/fa';
 
 // Stage definitions (consistent)
 const STAGE_LABELS = {
   draft: 'Draft',
   pending: 'Pending Review',
   approved: 'Approved',
-  rejected: 'Rejected'
+  rejected: 'Rejected',
+  paid_to_applicant: 'Paid to Applicant'
 };
 const stageVariants = {
     draft: 'secondary-subtle',
     pending: 'warning-subtle',
     approved: 'success-subtle',
-    rejected: 'danger-subtle'
+    rejected: 'danger-subtle',
+    paid_to_applicant: 'primary-subtle' // Added for completeness
 };
 const stageTextEmphasis = {
     draft: 'secondary-emphasis',
     pending: 'warning-emphasis',
     approved: 'success-emphasis',
-    rejected: 'danger-emphasis'
+    rejected: 'danger-emphasis',
+    paid_to_applicant: 'primary-emphasis' // Added for completeness
 };
 const getStatusIcon = (stage) => {
     switch (stage) {
@@ -65,6 +65,7 @@ const getStatusIcon = (stage) => {
         case 'rejected': return <XCircle size={16} className="me-1 text-danger" />;
         case 'pending': return <Clock size={16} className="me-1 text-warning" />;
         case 'draft': return <FileText size={16} className="me-1 text-secondary"/>;
+        case 'paid_to_applicant': return <FaRupeeSign size={16} className="me-1 text-primary" />;
         default: return null;
     }
 };
@@ -94,7 +95,7 @@ function ImageLoader({ imageId, alt }) {
       finally { if (isMounted) setLoading(false); }
     })();
     return () => { isMounted = false; clearTimeout(requestTimeout); if (objectURLRef.current) { URL.revokeObjectURL(objectURLRef.current); objectURLRef.current = null; } };
-  }, [imageId]);
+  }, [imageId, loading]);
 
   if (loading) return <div className="image-loader text-center p-3"><Spinner animation="border" size="sm" variant="secondary"/></div>;
   if (error || !src) return <div className="image-error text-muted small text-center p-2"><AlertTriangle size={18} className="text-danger me-1"/>(Image unavailable)</div>;
@@ -152,7 +153,11 @@ export default function ApplicationFullDetails() {
   }
 
   // Destructure after checks
-  const { user, amount, fields, created_at, updated_at, stage, loan, requiredDocumentRefs, history } = submission;
+  const { amount, fields, created_at, updated_at, stage, loan, requiredDocumentRefs, history } = submission;
+  const reqDocsLabels = {
+    "aadhaar_card": "Aadhaar Card",
+    "pan_card": "PAN Card"
+  }
 
   // Combine fields for display
    const allFieldsToDisplay = [
@@ -164,9 +169,10 @@ export default function ApplicationFullDetails() {
       { field_id: '_updated', field_label: 'Last Updated', value: formatDate(updated_at), type: 'datetime', icon: Clock },
       ...(fields || []),
       ...(requiredDocumentRefs || []).map(docRef => ({
-          field_id: `reqDoc_${docRef.documentName}`, field_label: docRef.documentName,
+          field_id: `reqDoc_${docRef.documentName}`,
           value: null, // Value is not relevant here, only fileRef
           type: 'image', // Mark as document type
+          field_label: reqDocsLabels[docRef.documentTypeKey] || docRef.documentTypeKey,
           fileRef: docRef.fileRef // Pass the fileRef
       }))
   ];
@@ -213,7 +219,7 @@ export default function ApplicationFullDetails() {
                              {(!history || history.length <= 1) && <p className="text-muted small mb-0 text-center">No status changes yet.</p>}
                              {history && history.length > 1 && (
                                 <ListGroup variant="flush" className="history-list small">
-                                    {[...history].sort((a, b) => new Date(b.changed_at) - new Date(a.changed_at))
+                                    {[...history].sort((a, b) => new Date(a.changed_at) - new Date(b.changed_at)).reverse() // Sort by date descending
                                         .map((entry, index) => (
                                         <ListGroup.Item key={index} className="d-flex justify-content-between align-items-center px-0 py-1 history-item">
                                             <span>

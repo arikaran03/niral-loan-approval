@@ -1,19 +1,21 @@
 // src/components/applicant/repayments/LoanRepaymentDetailPage.js
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom'; // Added Link
 import { Container, Card, Row, Col, Table, Button, Spinner, Alert, Badge, Modal, Form, InputGroup, ListGroup, ProgressBar, Tab, Nav } from 'react-bootstrap';
 import { 
     ArrowLeft, Calendar, CheckCircle, XCircle, Info, FileText, 
     DollarSign as DollarSignIcon, CreditCard, Landmark, MessageSquare, 
     Quote, ShieldCheck, Hourglass, AlertTriangle, Send, 
-    TrendingUp, TrendingDown, Percent, HelpCircle, SlidersHorizontal, History // Changed ClockHistory to History
+    TrendingUp, TrendingDown, Percent, HelpCircle, SlidersHorizontal, History,
+    Award // Lucide icon for Waiver
 } from 'lucide-react';
 import { formatCurrency, formatDate, getStatusBadgeVariant, getInstallmentStatusBadgeVariant } from '../../../utils/formatters'; 
 import { axiosInstance } from '../../../config'; 
 
-// API call functions (assuming these are correctly implemented to hit your backend)
+// API call functions
 const fetchLoanRepaymentDetailsAPI = async (repaymentId) => {
-    const response = await axiosInstance.get(`/api/repayments/${repaymentId}`);
+    // Ensure your backend populates loan_id.applicable_waiver_scheme_id
+    const response = await axiosInstance.get(`/api/repayments/${repaymentId}?populateLoan=true`); // Added a query param example
     return response.data.data; 
 };
 
@@ -55,7 +57,6 @@ export default function LoanRepaymentDetailPage() {
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState('schedule');
 
-
     // Payment Modal State
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentAmount, setPaymentAmount] = useState('');
@@ -88,6 +89,7 @@ export default function LoanRepaymentDetailPage() {
         try {
             const data = await fetchLoanRepaymentDetailsAPI(repaymentId);
             setRepaymentDetails(data);
+            // Set payment amount only if modal is not open or if it's a refresh and amount hasn't been manually changed
             if (!showPaymentModal || (isRefresh && paymentAmount === (repaymentDetails?.next_emi_amount?.toString() || ''))) {
                  setPaymentAmount(data?.next_emi_amount?.toString() || '');
             }
@@ -97,17 +99,18 @@ export default function LoanRepaymentDetailPage() {
         } finally {
             if (!isRefresh) setLoading(false);
         }
-    }, [repaymentId, showPaymentModal, paymentAmount, repaymentDetails]); 
+    }, [repaymentId, showPaymentModal, paymentAmount, repaymentDetails]); // Added repaymentDetails to dep array
 
     useEffect(() => {
         loadDetails();
-    }, [loadDetails]); 
+    }, [loadDetails]); // loadDetails is memoized
 
     const handleShowPaymentModal = (amountToPay = null, isForeclosurePayment = false) => {
         setPaymentError('');
         setPaymentSuccess('');
         const nextEmi = repaymentDetails?.next_emi_amount;
-        setPaymentAmount(amountToPay ? String(amountToPay) : (nextEmi && nextEmi > 0 ? String(nextEmi) : ''));
+        // If amountToPay is provided (e.g., for foreclosure), use it. Otherwise, use next EMI or keep current input.
+        setPaymentAmount(amountToPay ? String(amountToPay) : (paymentAmount || (nextEmi && nextEmi > 0 ? String(nextEmi) : '')));
         setPaymentMethod('UPI'); 
         setShowPaymentModal(true);
     };
@@ -121,12 +124,13 @@ export default function LoanRepaymentDetailPage() {
             setPaymentError("Please enter a valid positive payment amount.");
             return;
         }
+        // Allow payment up to outstanding principal + a small buffer for potential accrued interest not yet reflected
+        const maxPayable = (repaymentDetails?.current_outstanding_principal || 0) + (repaymentDetails?.accrued_interest_not_due || 0) + (repaymentDetails?.total_current_overdue_amount || 0);
 
-        if (repaymentDetails && numericPaymentAmount > repaymentDetails.current_outstanding_principal + 0.01) { 
-            setPaymentError(`Payment amount cannot exceed the total outstanding principal of ${formatCurrency(repaymentDetails.current_outstanding_principal)}.`);
+        if (repaymentDetails && numericPaymentAmount > maxPayable + 0.01) { 
+            setPaymentError(`Payment amount of ${formatCurrency(numericPaymentAmount)} exceeds the total effective outstanding amount of ~${formatCurrency(maxPayable)}.`);
             return;
         }
-
 
         setPaymentSubmitting(true);
         setPaymentError('');
@@ -135,9 +139,10 @@ export default function LoanRepaymentDetailPage() {
             const paymentData = {
                 amount: numericPaymentAmount,
                 paymentMethod: paymentMethod,
+                // Add any other necessary details for payment_mode_details if needed
             };
             const response = await makePaymentAPI(repaymentId, paymentData);
-            if (response.success) {
+            if (response.success || response.data?.status === 'Cleared' || response.data?.status === 'Processing' ) { // Check for backend success indicators
                 setPaymentSuccess(response.message || "Payment initiated successfully! Details will update shortly.");
                 setTimeout(() => {
                      setShowPaymentModal(false);
@@ -203,16 +208,17 @@ export default function LoanRepaymentDetailPage() {
                     amountPaid: foreclosureQuote.totalForeclosureAmount,
                     transactionReference: foreclosurePaymentRef, 
                     paymentDate: new Date().toISOString(), 
-                    paymentMethod: "Foreclosure Payment", 
+                    paymentMethod: "Foreclosure Payment", // Or a more specific method if user chose one
                     foreclosureFeePaid: foreclosureQuote.foreclosureFee 
                 },
-                notes: "Applicant confirmed foreclosure payment."
+                notes: "Applicant confirmed foreclosure payment via portal."
             };
             const response = await confirmForeclosureAPI(repaymentId, confirmationData);
-            if (response.success) {
+            if (response.success) { // Check for backend success indicator
                 setConfirmForeclosureSuccess(response.message || "Foreclosure confirmed successfully! Loan details updated.");
                 setTimeout(() => {
                      setShowConfirmForeclosureModal(false);
+                     setShowForeclosureQuoteModal(false); // Close the quote modal too
                      loadDetails(true); 
                 }, 2500);
             } else {
@@ -263,7 +269,7 @@ export default function LoanRepaymentDetailPage() {
     }
     
     const { 
-        loan_id, 
+        loan_id, // This should be populated with loan details including applicable_waiver_scheme_id
         disbursed_amount, 
         initial_calculated_emi, 
         current_outstanding_principal, 
@@ -283,11 +289,16 @@ export default function LoanRepaymentDetailPage() {
         total_interest_repaid = 0,
         total_penalties_paid = 0,
         days_past_due = 0,
-        total_current_overdue_amount = 0
+        total_current_overdue_amount = 0,
+        applied_waiver_info // Check if this is populated
     } = repaymentDetails;
 
+    const applicableWaiverSchemeId = loan_id?.applicable_waiver_scheme_id._id;
     const canMakePayment = ['Active', 'Active - Overdue', 'Active - Grace Period'].includes(loan_repayment_status);
     const canRequestForeclosure = prepayment_configuration?.allow_prepayment && canMakePayment; 
+    // Waiver can be applied if a scheme is linked, loan is active, and no waiver already applied
+    const canApplyForWaiver = applicableWaiverSchemeId && canMakePayment && !applied_waiver_info;
+
     const progressPercent = disbursed_amount > 0 ? ((total_principal_repaid / disbursed_amount) * 100) : 0;
 
     return (
@@ -393,6 +404,17 @@ export default function LoanRepaymentDetailPage() {
                                     <tr><td><strong>Total Interest Paid:</strong></td><td className="text-success fw-medium">{formatCurrency(total_interest_repaid)}</td></tr>
                                     {total_penalties_paid > 0 && <tr><td><strong>Total Penalties Paid:</strong></td><td className="text-danger fw-medium">{formatCurrency(total_penalties_paid)}</td></tr>}
                                     {total_current_overdue_amount > 0 &&  <tr><td><strong>Current Overdue Amount:</strong></td><td className="text-danger fw-bold">{formatCurrency(total_current_overdue_amount)}</td></tr>}
+                                    {applied_waiver_info && (
+                                        <tr>
+                                            <td><strong>Waiver Applied:</strong></td>
+                                            <td>
+                                                <Badge bg="info" text="dark">
+                                                    <Award size={14} className="me-1"/> Yes
+                                                </Badge>
+                                                <small className="d-block text-muted">{applied_waiver_info.waiver_details_summary || `Ref: ${applied_waiver_info.waiver_submission_id.slice(-6)}`}</small>
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </Table>
                         </Col>
@@ -408,6 +430,16 @@ export default function LoanRepaymentDetailPage() {
                                         <Quote size={18} className="me-2" /> Request Foreclosure Quote
                                     </Button>
                                     )}
+                                    {/* New "Apply for Waiver" Button */}
+                                    {canApplyForWaiver && (
+                                        <Button 
+                                            variant="outline-warning" 
+                                            className="mb-3 w-100" 
+                                            onClick={() => navigate(`/waiver-application/${applicableWaiverSchemeId}`)}
+                                        >
+                                            <Award size={18} className="me-2" /> Apply for Waiver
+                                        </Button>
+                                    )}
                                     {foreclosureQuote && canRequestForeclosure && ( 
                                         <Button variant="info" className="w-100" onClick={handleShowConfirmForeclosureModal}>
                                             <Send size={18} className="me-2" /> Confirm Foreclosure Payment
@@ -418,6 +450,11 @@ export default function LoanRepaymentDetailPage() {
                                 <Alert variant={loan_repayment_status === 'Fully Repaid' || loan_repayment_status === 'Foreclosed' ? 'success' : 'info'} className="text-center w-100">
                                     {loan_repayment_status === 'Fully Repaid' || loan_repayment_status === 'Foreclosed' ? <ShieldCheck size={24} className="mb-2" /> : <Info size={24} className="mb-2" />}
                                     This loan is currently <strong>{loan_repayment_status}</strong>.
+                                </Alert>
+                            )}
+                             {applied_waiver_info && !canApplyForWaiver && ( // If waiver already applied
+                                <Alert variant="info" className="text-center w-100 mt-2 small p-2">
+                                    <Award size={16} className="me-1"/> A waiver has already been applied to this loan.
                                 </Alert>
                             )}
                         </Col>
@@ -433,7 +470,7 @@ export default function LoanRepaymentDetailPage() {
                             <Nav.Link eventKey="schedule" className="d-flex align-items-center"><Calendar size={18} className="me-2"/>Installment Schedule</Nav.Link>
                         </Nav.Item>
                         <Nav.Item>
-                            <Nav.Link eventKey="history" className="d-flex align-items-center"><History size={18} className="me-2"/>Payment History</Nav.Link> {/* Changed Icon */}
+                            <Nav.Link eventKey="history" className="d-flex align-items-center"><History size={18} className="me-2"/>Payment History</Nav.Link>
                         </Nav.Item>
                         <Nav.Item>
                             <Nav.Link eventKey="communication" className="d-flex align-items-center"><MessageSquare size={18} className="me-2"/>Communication Log</Nav.Link>
@@ -580,8 +617,7 @@ export default function LoanRepaymentDetailPage() {
                 </Tab.Content>
             </Card>
 
-
-            {/* Payment Modal (same as before) */}
+            {/* Payment Modal */}
             <Modal show={showPaymentModal} onHide={handleClosePaymentModal} centered>
                 <Modal.Header closeButton>
                     <Modal.Title><DollarSignIcon size={24} className="me-2" />Make a Payment</Modal.Title>
@@ -605,9 +641,9 @@ export default function LoanRepaymentDetailPage() {
                                     disabled={paymentSubmitting}
                                 />
                             </InputGroup>
-                             {repaymentDetails && parseFloat(paymentAmount) > repaymentDetails.current_outstanding_principal &&
+                             {repaymentDetails && parseFloat(paymentAmount) > (repaymentDetails.current_outstanding_principal + (repaymentDetails.accrued_interest_not_due || 0) + (repaymentDetails.total_current_overdue_amount || 0)) + 0.01 &&
                                 <Form.Text className="text-danger">
-                                    Payment amount exceeds total outstanding principal. Max payable: {formatCurrency(repaymentDetails.current_outstanding_principal)}.
+                                    Payment amount exceeds total effective outstanding. Max: {formatCurrency((repaymentDetails.current_outstanding_principal + (repaymentDetails.accrued_interest_not_due || 0) + (repaymentDetails.total_current_overdue_amount || 0)))}.
                                 </Form.Text>
                             }
                         </Form.Group>
@@ -628,14 +664,14 @@ export default function LoanRepaymentDetailPage() {
                         <Button variant="secondary" onClick={handleClosePaymentModal} disabled={paymentSubmitting}>
                             Cancel
                         </Button>
-                        <Button variant="primary" type="submit" disabled={paymentSubmitting || !paymentAmount || (repaymentDetails && parseFloat(paymentAmount) > repaymentDetails.current_outstanding_principal + 0.01) }>
+                        <Button variant="primary" type="submit" disabled={paymentSubmitting || !paymentAmount || (repaymentDetails && parseFloat(paymentAmount) > (repaymentDetails.current_outstanding_principal + (repaymentDetails.accrued_interest_not_due || 0) + (repaymentDetails.total_current_overdue_amount || 0)) + 0.01) }>
                             {paymentSubmitting ? <><Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" /> Processing...</> : 'Proceed to Pay'}
                         </Button>
                     </Modal.Footer>
                 </Form>
             </Modal>
 
-            {/* Foreclosure Quote Modal (same as before) */}
+            {/* Foreclosure Quote Modal */}
             <Modal show={showForeclosureQuoteModal} onHide={handleCloseForeclosureQuoteModal} centered size="lg">
                  <Modal.Header closeButton>
                     <Modal.Title><Quote size={24} className="me-2" />Foreclosure Quote</Modal.Title>
@@ -653,7 +689,7 @@ export default function LoanRepaymentDetailPage() {
                                 <tbody>
                                     <tr><td>Current Outstanding Principal:</td><td className="text-end fw-bold">{formatCurrency(foreclosureQuote.outstandingPrincipal)}</td></tr>
                                     <tr><td>Estimated Accrued Interest:</td><td className="text-end">{formatCurrency(foreclosureQuote.accruedInterest)}</td></tr>
-                                    <tr><td>Foreclosure Fee ({prepayment_configuration?.prepayment_fee_value}% of Principal):</td><td className="text-end">{formatCurrency(foreclosureQuote.foreclosureFee)}</td></tr>
+                                    <tr><td>Foreclosure Fee ({prepayment_configuration?.prepayment_fee_type === 'PercentageOfOutstandingPrincipal' ? `${prepayment_configuration?.prepayment_fee_value}% of Principal` : prepayment_configuration?.prepayment_fee_type }):</td><td className="text-end">{formatCurrency(foreclosureQuote.foreclosureFee)}</td></tr>
                                     <tr className="table-primary">
                                         <td className="fw-bold fs-5">Total Amount Payable:</td>
                                         <td className="text-end fw-bold fs-5">{formatCurrency(foreclosureQuote.totalForeclosureAmount)}</td>
@@ -665,7 +701,7 @@ export default function LoanRepaymentDetailPage() {
                                 <p>To proceed with foreclosure, please make a payment for the 'Total Amount Payable'.</p>
                                 <Button variant="success" className="mb-2" onClick={() => { 
                                     handleCloseForeclosureQuoteModal(); 
-                                    handleShowPaymentModal(foreclosureQuote.totalForeclosureAmount, true); // Pass true for isForeclosurePayment
+                                    handleShowPaymentModal(foreclosureQuote.totalForeclosureAmount, true);
                                     }}>
                                     <DollarSignIcon size={18} className="me-1" /> Initiate Foreclosure Payment
                                 </Button>
@@ -679,7 +715,7 @@ export default function LoanRepaymentDetailPage() {
                 </Modal.Footer>
             </Modal>
 
-            {/* Confirm Foreclosure Modal (same as before) */}
+            {/* Confirm Foreclosure Modal */}
             <Modal show={showConfirmForeclosureModal} onHide={handleCloseConfirmForeclosureModal} centered>
                 <Modal.Header closeButton>
                     <Modal.Title><Send size={24} className="me-2" />Confirm Foreclosure Payment</Modal.Title>

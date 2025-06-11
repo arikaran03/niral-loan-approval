@@ -77,13 +77,13 @@ const WaiverSubmissionSchema = new mongoose.Schema({
   // Extracted/Verified data from Aadhaar Card (still relevant for applicant KYC)
   aadhaar_data: {
     type: mongoose.Schema.Types.Mixed, // Stores { name: "...", dob: "...", address: "..." etc. }
-    required: [true, 'Aadhaar data is mandatory for waiver submission.'],
+    // required: [true, 'Aadhaar data is mandatory for waiver submission.'],
     default: {}
   },
   // Extracted/Verified data from PAN Card (still relevant for applicant KYC)
   pan_data: {
     type: mongoose.Schema.Types.Mixed, // Stores { pan_number: "...", name: "..." etc. }
-    required: [true, 'PAN data is mandatory for waiver submission.'],
+    // required: [true, 'PAN data is mandatory for waiver submission.'],
     default: {}
   },
 
@@ -168,12 +168,12 @@ WaiverSubmissionSchema.pre('save', async function(next) {
         }
 
         // 3. Check for populated aadhaar_data and pan_data (basic check from KYC process)
-        if (!this.aadhaar_data || Object.keys(this.aadhaar_data).length === 0) {
-            return next(new Error('Processed Aadhaar data is missing or empty. Ensure Aadhaar document was verified.'));
-        }
-        if (!this.pan_data || Object.keys(this.pan_data).length === 0) {
-            return next(new Error('Processed PAN data is missing or empty. Ensure PAN document was verified.'));
-        }
+        // if (!this.aadhaar_data || Object.keys(this.aadhaar_data).length === 0) {
+        //     return next(new Error('Processed Aadhaar data is missing or empty. Ensure Aadhaar document was verified.'));
+        // }
+        // if (!this.pan_data || Object.keys(this.pan_data).length === 0) {
+        //     return next(new Error('Processed PAN data is missing or empty. Ensure PAN document was verified.'));
+        // }
 
         // 4. Check other required documents as defined in the WaiverScheme's 'required_documents'
         const schemeRequiredDocs = (waiverScheme.required_documents || []).filter(

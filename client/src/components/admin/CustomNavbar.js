@@ -1,5 +1,5 @@
 // src/components/CustomNavbar.jsx
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom"; // Import useLocation
 import { Navbar, Container, Nav, Dropdown, Spinner } from "react-bootstrap";
 import {
@@ -9,8 +9,7 @@ import {
   FaPlusCircle,
   FaPaperPlane,
   FaTachometerAlt,
-  FaCreditCard, // Icon for repayments
-  FaListAlt,    // Alternative icon for repayments or loan schemes
+  FaCreditCard
 } from "react-icons/fa";
 import { BANK_NAME } from "../../config";
 import logo from "../../assets/logo.png";

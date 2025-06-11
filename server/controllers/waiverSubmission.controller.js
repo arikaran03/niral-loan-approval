@@ -1,6 +1,6 @@
 // src/controllers/waiverSubmission.controller.js
-import WaiverSubmission from '../models/WaiverSubmission.js'; // Adjust path as needed
-import WaiverScheme from '../models/WaiverScheme.js';       // Adjust path as needed
+import WaiverSubmission from '../database/models/WaiverSubmissionModel.js'; // Adjust path as needed
+import WaiverScheme from '../database/models/WaiverScheme.js';       // Adjust path as needed
 // import GovDocumentDefinitionModel from '../models/GovDocumentDefinitionModel.js'; // If needed for doc defs in submission details
 import mongoose from 'mongoose';
 
@@ -23,44 +23,61 @@ export default {
    */
   async create(req, res) {
     try {
-      const submissionData = { ...req.body };
+      const {
+        waiver_scheme_id,
+        fields,
+        requiredDocumentRefs,
+        aadhaar_data,
+        pan_data,
+        isFaceVerified,
+        isOtpVerified, // Field from your payload
+        annexureDocumentRef,
+        stage = 'draft' // Default to 'draft' if not provided, though payload shows 'pending_review'
+      } = req.body;
 
-      // Ensure user_id is set (assuming it comes from auth middleware)
-      if (!req.user || !req.user._id) { // Example: if using req.user from auth
-        // If user_id is passed directly in body for some reason, ensure it's validated
-        if (!submissionData.user_id) {
-             return res.status(400).json({ error: 'User ID is required for submission.' });
-        }
+      let userIdFromAuth;
+      if (req.user && req.user._id) {
+        userIdFromAuth = req.user._id;
+      } else if (req.body.user_id && mongoose.Types.ObjectId.isValid(req.body.user_id)) {
+        // Fallback if user_id is in body (e.g. for system-to-system or specific admin actions)
+        // Ensure proper authorization if using this fallback.
+        userIdFromAuth = req.body.user_id;
+        console.warn("WaiverSubmission create: user_id taken from req.body. Ensure this is an authorized action.");
       } else {
-        submissionData.user_id = req.user._id;
+        return res.status(401).json({ success: false, error: 'User ID is required and not found in authenticated session or request body.' });
       }
 
-      // Validate waiver_scheme_id
-      if (!submissionData.waiver_scheme_id || !mongoose.Types.ObjectId.isValid(submissionData.waiver_scheme_id)) {
-        return res.status(400).json({ error: 'Valid Waiver Scheme ID is required.' });
+      if (!waiver_scheme_id || !mongoose.Types.ObjectId.isValid(waiver_scheme_id)) {
+        return res.status(400).json({ success: false, error: 'Valid Waiver Scheme ID is required.' });
       }
 
-      // Check if the referenced WaiverScheme exists and is published (optional, but good practice)
-      const scheme = await WaiverScheme.findById(submissionData.waiver_scheme_id);
+      const scheme = await WaiverScheme.findById(waiver_scheme_id);
       if (!scheme) {
-        return res.status(404).json({ error: 'Associated Waiver Scheme not found.' });
+        return res.status(404).json({ success: false, error: 'Associated Waiver Scheme not found.' });
       }
       if (scheme.status !== 'published') {
-        return res.status(400).json({ error: 'Applications can only be submitted for published waiver schemes.' });
+        return res.status(400).json({ success: false, error: 'Applications can only be submitted for published waiver schemes.' });
       }
-      // Ensure application is within the scheme's active window
       const now = new Date();
       if (now < new Date(scheme.application_start_date) || now > new Date(scheme.application_end_date)) {
-          return res.status(400).json({ error: 'Waiver scheme is not currently active for submissions.' });
+          return res.status(400).json({ success: false, error: 'Waiver scheme is not currently active for submissions.' });
       }
 
+      const submissionData = {
+        waiver_scheme_id,
+        user_id: userIdFromAuth,
+        fields: fields || [],
+        requiredDocumentRefs: requiredDocumentRefs || [],
+        aadhaar_data: aadhaar_data || {},
+        pan_data: pan_data || {},
+        isFaceVerified: isFaceVerified !== undefined ? isFaceVerified : false,
+        isOtpVerified: isOtpVerified !== undefined ? isOtpVerified : false, // Include from payload; ensure model supports it
+        annexureDocumentRef: annexureDocumentRef || null,
+        stage,
+      };
 
-      // The pre-save hook in WaiverSubmissionModel will handle history for new docs.
-      // It will also run validations if stage is directly set to 'pending_review'.
-      // If creating as 'draft', fewer validations might apply initially.
-      // Default stage is 'draft' in the model. If submitting directly, set stage: 'pending_review'.
       if (submissionData.stage && submissionData.stage !== 'draft') {
-         submissionData.changed_by_user_id_for_stage_change = submissionData.user_id;
+         submissionData.changed_by_user_id_for_stage_change = userIdFromAuth;
       }
 
 
@@ -69,7 +86,7 @@ export default {
     } catch (err) {
       console.error("Error creating waiver submission:", err);
       const msg = formatMongooseError(err);
-      return res.status(400).json({ error: msg });
+      return res.status(400).json({ success: false, error: msg });
     }
   },
 
@@ -86,23 +103,23 @@ export default {
       if (waiver_scheme_id && mongoose.Types.ObjectId.isValid(waiver_scheme_id)) {
         query.waiver_scheme_id = waiver_scheme_id;
       }
+      // If user_id is provided in query, use it. Otherwise, if admin, show all. If user, show their own.
       if (user_id && mongoose.Types.ObjectId.isValid(user_id)) {
         query.user_id = user_id;
+      } else if (req.user && !req.user.isAdmin) { // Example: Check if user is not admin
+        query.user_id = req.user._id;
       }
-      // Example: For an admin, list all. For a user, list only their own.
-      // if (req.user && !req.user.isAdmin) { // Assuming isAdmin flag on user object
-      //   query.user_id = req.user._id;
-      // }
+
 
       const submissions = await WaiverSubmission.find(query)
-        .populate('waiver_scheme_id', 'title waiver_type') // Populate some scheme details
-        .populate('user_id', 'name email') // Populate some user details
+        .populate('waiver_scheme_id', 'title waiver_type')
+        .populate('user_id', 'name email')
         .sort({ created_at: -1 })
         .lean();
-      return res.json(submissions);
+      return res.status(200).json({ success: true, data: submissions });
     } catch (err) {
       console.error("Error listing waiver submissions:", err);
-      return res.status(500).json({ error: 'Failed to retrieve waiver submissions.' });
+      return res.status(500).json({ success: false, error: 'Failed to retrieve waiver submissions.' });
     }
   },
 
@@ -111,33 +128,30 @@ export default {
    * Populates related WaiverScheme details.
    */
   async getById(req, res) {
-    const { id } = req.params; // ID validation is done by middleware in routes
+    const { id } = req.params;
+     if (!mongoose.Types.ObjectId.isValid(id)) { // Moved validation here from routes for consistency
+      return res.status(400).json({ success: false, error: 'Invalid Submission ID format.' });
+    }
     try {
       const submission = await WaiverSubmission.findById(id)
-        .populate('waiver_scheme_id') // Populate full waiver scheme details
-        .populate('user_id', 'name email username') // Populate user details
-        .populate('reviewer_id', 'name email username') // Populate reviewer details
-        .populate('requiredDocumentRefs.fileRef') // Populate file details for required docs
-        .populate('annexureDocumentRef') // Populate annexure file details
-        .populate({ // Populate file details for custom fields of type image/document
+        .populate('waiver_scheme_id')
+        .populate('user_id', 'name email username')
+        .populate('reviewer_id', 'name email username')
+        .populate('requiredDocumentRefs.fileRef')
+        .populate('annexureDocumentRef')
+        .populate({
             path: 'fields.fileRef',
-            model: 'File' // Assuming your File model is named 'File'
+            model: 'File'
         })
         .lean();
 
       if (!submission) {
-        return res.status(404).json({ error: 'Waiver Submission not found.' });
+        return res.status(404).json({ success: false, error: 'Waiver Submission not found.' });
       }
-
-      // If you need to attach GovDocumentDefinitions similar to loan/scheme controllers:
-      // You would collect schema_ids from submission.waiver_scheme_id.required_documents
-      // and submission.waiver_scheme_id.fields.auto_fill_sources, then fetch and attach.
-      // This might be redundant if the frontend can get them from the populated waiver_scheme_id.
-
-      return res.json(submission);
+      return res.status(200).json({ success: true, data: submission });
     } catch (err) {
       console.error(`Error fetching waiver submission by ID ${id}:`, err);
-      return res.status(500).json({ error: 'An error occurred while fetching the submission details.' });
+      return res.status(500).json({ success: false, error: 'An error occurred while fetching the submission details.' });
     }
   },
 
@@ -146,41 +160,52 @@ export default {
    * Typically used by admins to change stage, add review notes, etc.
    */
   async update(req, res) {
-    const { id } = req.params; // ID validation by middleware
+    const { id } = req.params;
+     if (!mongoose.Types.ObjectId.isValid(id)) { // Moved validation here
+      return res.status(400).json({ success: false, error: 'Invalid Submission ID format.' });
+    }
     const updateData = { ...req.body };
 
     try {
       const submission = await WaiverSubmission.findById(id);
       if (!submission) {
-        return res.status(404).json({ error: 'Waiver Submission not found.' });
+        return res.status(404).json({ success: false, error: 'Waiver Submission not found.' });
       }
 
-      // If stage is being changed, set the user responsible for audit
       if (updateData.stage && updateData.stage !== submission.stage) {
         if (!req.user || !req.user._id) {
-          return res.status(401).json({ error: 'User not authenticated for updating submission stage.' });
+          return res.status(401).json({ success: false, error: 'User not authenticated for updating submission stage.' });
         }
-        // Pass the user ID to the pre-save hook for history tracking
         submission.changed_by_user_id_for_stage_change = req.user._id;
-
-        // Add reviewer_id and review_date if stage moves to approved/rejected
         if (['approved', 'rejected'].includes(updateData.stage)) {
-            updateData.reviewer_id = req.user._id;
-            updateData.review_date = new Date();
+            // Ensure updateData.reviewer_id is not accidentally passed from client for these fields
+            submission.reviewer_id = req.user._id;
+            submission.review_date = new Date();
         }
       }
+      
+      // Explicitly set fields to avoid unintended updates from req.body spread
+      const allowedUpdates = [
+        'stage', 'fields', 'requiredDocumentRefs', 'aadhaar_data', 'pan_data',
+        'isFaceVerified', 'isOtpVerified', 'annexureDocumentRef',
+        'rejection_reason', 'application_notes' // Add other fields admins can update
+      ];
+
+      allowedUpdates.forEach(key => {
+        if (updateData.hasOwnProperty(key)) {
+            // For nested objects like 'fields' or 'aadhaar_data', ensure they are handled correctly
+            // For simple assignment:
+            submission[key] = updateData[key];
+        }
+      });
 
 
-      // Apply updates
-      Object.assign(submission, updateData);
-
-      const updatedSubmission = await submission.save(); // This will trigger pre-save hooks
-
-      return res.json(updatedSubmission);
+      const updatedSubmission = await submission.save();
+      return res.status(200).json({ success: true, data: updatedSubmission });
     } catch (err) {
       console.error(`Error updating waiver submission ID ${id}:`, err);
       const msg = formatMongooseError(err);
-      return res.status(400).json({ error: msg });
+      return res.status(400).json({ success: false, error: msg });
     }
   },
 
@@ -189,35 +214,33 @@ export default {
    * Changes the stage to 'closed' or 'cancelled'.
    */
   async removeOrCancel(req, res) {
-    const { id } = req.params; // ID validation by middleware
+    const { id } = req.params;
+     if (!mongoose.Types.ObjectId.isValid(id)) { // Moved validation here
+      return res.status(400).json({ success: false, error: 'Invalid Submission ID format.' });
+    }
     try {
       const submission = await WaiverSubmission.findById(id);
       if (!submission) {
-        return res.status(404).json({ error: 'Waiver Submission not found.' });
+        return res.status(404).json({ success: false, error: 'Waiver Submission not found.' });
       }
 
-      // Determine if user can cancel (e.g., only if in 'draft' or 'pending_review')
-      // Or if admin is closing it.
-      // For simplicity, let's assume this endpoint sets it to 'closed'.
       if (submission.stage === 'closed' || submission.stage === 'cancelled') {
-        return res.json({ message: 'Submission is already closed or cancelled.', submission });
+        return res.status(200).json({ success: true, message: 'Submission is already closed or cancelled.', data: submission });
       }
 
-      submission.stage = 'closed'; // Or 'cancelled' based on your logic
+      submission.stage = 'closed'; // Or 'cancelled'
       if (req.user && req.user._id) {
         submission.changed_by_user_id_for_stage_change = req.user._id;
       } else {
-         // Fallback or error if changer is unknown for a non-user initiated cancel
          console.warn(`Attempting to cancel submission ${id} without an identified user.`);
       }
 
-
       const updatedSubmission = await submission.save();
-      return res.json({ message: 'Waiver Submission has been closed/cancelled.', submission: updatedSubmission });
+      return res.status(200).json({ success: true, message: 'Waiver Submission has been closed/cancelled.', data: updatedSubmission });
     } catch (err) {
       console.error(`Error cancelling/closing waiver submission ID ${id}:`, err);
       const msg = formatMongooseError(err);
-      return res.status(500).json({ error: msg });
+      return res.status(500).json({ success: false, error: msg });
     }
   },
 
@@ -227,17 +250,17 @@ export default {
   async listByScheme(req, res) {
     const { schemeId } = req.params;
     if (!mongoose.Types.ObjectId.isValid(schemeId)) {
-      return res.status(400).json({ error: 'Invalid Waiver Scheme ID format.' });
+      return res.status(400).json({ success: false, error: 'Invalid Waiver Scheme ID format.' });
     }
     try {
       const submissions = await WaiverSubmission.find({ waiver_scheme_id: schemeId })
         .populate('user_id', 'name email')
         .sort({ created_at: -1 })
         .lean();
-      return res.json(submissions);
+      return res.status(200).json({ success: true, data: submissions });
     } catch (err) {
       console.error(`Error listing submissions for scheme ID ${schemeId}:`, err);
-      return res.status(500).json({ error: 'Failed to retrieve submissions for the scheme.' });
+      return res.status(500).json({ success: false, error: 'Failed to retrieve submissions for the scheme.' });
     }
   },
 
@@ -245,19 +268,18 @@ export default {
    * (Example) List Waiver Submissions for the authenticated user.
    */
   async listByUser(req, res) {
-    // This assumes req.user._id is available from authentication middleware
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ error: 'User not authenticated.' });
+      return res.status(401).json({ success: false, error: 'User not authenticated.' });
     }
     try {
       const submissions = await WaiverSubmission.find({ user_id: req.user._id })
         .populate('waiver_scheme_id', 'title')
         .sort({ created_at: -1 })
         .lean();
-      return res.json(submissions);
+      return res.status(200).json({ success: true, data: submissions });
     } catch (err) {
       console.error(`Error listing submissions for user ID ${req.user._id}:`, err);
-      return res.status(500).json({ error: 'Failed to retrieve your submissions.' });
+      return res.status(500).json({ success: false, error: 'Failed to retrieve your submissions.' });
     }
   },
 };

@@ -26,6 +26,7 @@ import {
 import govSchemaRoutes from "./routes/schema.routes.js";
 import { sendOtp, verifyOtp } from "./functions/communicate.js";
 import waiverSchemeRoutes from "./routes/waiverScheme.routes.js";
+import waiverSubmissionRoutes from "./routes/waiverSubmission.routes.js";
 
 mongodbConnect();
 
@@ -63,7 +64,7 @@ app.use(cookieParser());
 const allowedOrigins = [
   "http://localhost:3000",
   "https://h08bsvj6-3000.inc1.devtunnels.ms",
-  "https://docusift-groove.vercel.app",
+  "https://docusift-groove.vercel.app"
 ];
 
 app.use(
@@ -182,6 +183,8 @@ app.post("/api/otp/verify", async (req, res) => { // Added async and res
 
 app.use('/api/waiver-schemes', waiverSchemeRoutes);
 
+app.use('/api/waiver-submissions', waiverSubmissionRoutes);
+
 // Global error handler (catches both express-jwt errors and any thrown below)
 app.use(errorHandler);
 
@@ -191,7 +194,7 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Server started on port ${PORT}`);
-});
-// export default app;
+// app.listen(PORT, () => {
+//   console.log(`Server started on port ${PORT}`);
+// });
+export default app;

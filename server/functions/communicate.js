@@ -348,7 +348,7 @@ async function testOtpFlow() {
 // 1. Set FAST2SMS_API_KEY environment variable: export FAST2SMS_API_KEY="your_key_here"
 // 2. Optionally set OTP_APPLICATION_NAME: export OTP_APPLICATION_NAME="My Awesome App"
 // 3. Uncomment and run:
-testOtpFlow();
+// testOtpFlow();
 
 async function sendConfiguredEmail(mailDetails) {
   // --- SMTP Configuration (loaded from .env or defaults) ---

@@ -1,6 +1,6 @@
 // src/components/admin/AdminDashboard.jsx
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Container, Row, Col, Spinner, Alert, Card, Table, Badge, Button } from 'react-bootstrap';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell // Removed unused Legend

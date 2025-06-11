@@ -1,8 +1,7 @@
 // src/components/application/ApplicationForm.js
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import PropTypes from "prop-types";
 import {
   Container,
   Card,
@@ -22,46 +21,27 @@ import {
   FaDollarSign,
   FaPercentage,
   FaCalendarAlt,
-  FaClock,
   FaCheckCircle,
   FaExclamationTriangle,
-  FaSave,
   FaCloudUploadAlt,
   FaTrash,
-  FaPlus,
-  FaEdit,
   FaListOl,
   FaFileMedicalAlt,
   FaRegSave,
-  FaUser,
-  FaHashtag,
-  FaFileSignature,
   FaFileUpload,
-  FaTimes,
-  FaHourglassStart,
-  FaQuestionCircle,
   FaShieldAlt,
-  FaAddressCard,
-  FaIdBadge,
   FaDownload,
   FaPaperclip,
 } from "react-icons/fa";
 import {
-  ArrowLeft,
-  FileText,
-  XCircle,
   Check,
   AlertCircle,
-  Lock,
   FileWarning,
-  Hourglass,
   UserCheck,
-  CalendarDays,
   BarChart3,
   Landmark,
   MessageSquareText,
 } from "lucide-react";
-import { format, parseISO, isValid } from "date-fns";
 import "./ApplicationForm.css";
 import FaceVerificationApp from "../verification/FaceVerificationApp";
 import FieldRenderer from "./FieldRenderer";
@@ -136,14 +116,14 @@ export default function ApplicationForm() {
 
   const formRef = useRef(null);
 
+  const isExtracting = Object.values(docValidationStatus).some(
+    (status) => status.status === "validating"
+  );
+
   const getFieldKeyFromSource = (sourceString) => {
     if (!sourceString) return null;
     const p = sourceString.split(".");
     return p.length > 1 ? p[p.length - 1] : null;
-  };
-  const formatDate = (dateString) => {
-    const date = dateString ? parseISO(dateString) : null;
-    return date && isValid(date) ? format(date, "MMM d, yyyy h:mm a") : "N/A";
   };
 
   const formatDateToYYYYMMDD = (dateStr) => {
@@ -152,7 +132,9 @@ export default function ApplicationForm() {
     if (isoMatch) return isoMatch[1];
     const ddmmMatch = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
     if (!ddmmMatch) return dateStr;
-    const [_, day, month, year] = ddmmMatch;
+    const day = ddmmMatch[1];
+    const month = ddmmMatch[2];
+    const year = ddmmMatch[3];
     return `${year}-${month}-${day}`;
   };
   const formatDateToDDMMYYYY = (isoDateString) => {
@@ -1119,67 +1101,82 @@ export default function ApplicationForm() {
           const newAutoFilledForThisDoc = {};
           const currentFormDataSnapshot = { ...formData };
 
-          loanSchemaData?.fields.forEach((targetField) => {
-            const relevantSource = targetField.auto_fill_sources?.find(
-              (source) => source.startsWith(`${docTypeKey}.`)
-            );
-            if (relevantSource) {
-              const sourceKey = getFieldKeyFromSource(relevantSource);
-              if (sourceKey && dataToUseForAutofill.hasOwnProperty(sourceKey)) {
-                let autoFillValue = String(
-                  dataToUseForAutofill[sourceKey] ?? ""
-                );
-                if (
-                  targetField.type === "date" &&
-                  autoFillValue.match(/^\d{2}-\d{2}-\d{4}$/)
-                ) {
-                  autoFillValue = formatDateToYYYYMMDD(autoFillValue);
-                } else if (
-                  targetField.type === "date" &&
-                  autoFillValue.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
-                ) {
-                  autoFillValue = autoFillValue.split("T")[0];
-                }
+         loanSchemaData?.fields.forEach((targetField) => {
+           const relevantSource = targetField.auto_fill_sources?.find(
+             (source) => source.startsWith(`${docTypeKey}.`)
+           );
+           if (relevantSource) {
+             const sourceKey = getFieldKeyFromSource(relevantSource);
+             if (dataToUseForAutofill.hasOwnProperty(sourceKey)) {
+               let autoFillValue = String(
+                 dataToUseForAutofill[sourceKey] ?? ""
+               );
+               if (
+                 targetField.type === "date" &&
+                 autoFillValue.match(/^\d{2}-\d{2}-\d{4}$/)
+               ) {
+                 autoFillValue = formatDateToYYYYMMDD(autoFillValue);
+               } else if (
+                 targetField.type === "date" &&
+                 autoFillValue.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+               ) {
+                 autoFillValue = autoFillValue.split("T")[0];
+               }
 
-                const targetFieldId = targetField.field_id;
-                const existingManualValue = String(
-                  currentFormDataSnapshot[targetFieldId] ?? ""
-                );
+               const targetFieldId = targetField.field_id;
+               const existingManualValue = String(
+                 currentFormDataSnapshot[targetFieldId] ?? ""
+               );
 
-                if (
-                  existingManualValue.toLowerCase() === "" ||
-                  existingManualValue.toLowerCase() ===
-                    autoFillValue.toLowerCase() ||
-                  (autoFilledFields[targetFieldId] &&
-                    autoFilledFields[targetFieldId].verifiedByDocType ===
-                      docTypeKey)
-                ) {
-                  if (
-                    currentFormDataSnapshot[targetFieldId] !== autoFillValue
-                  ) {
-                    currentFormDataSnapshot[targetFieldId] = autoFillValue;
-                    updatedFormDataFlag = true;
-                  }
-                  newAutoFilledForThisDoc[targetFieldId] = {
-                    value: autoFillValue,
-                    verifiedByDocType: docTypeKey,
-                    originalSourceKey: sourceKey,
-                  };
-                } else if (
-                  existingManualValue !== "" &&
-                  existingManualValue.toLowerCase() !==
-                    autoFillValue.toLowerCase()
-                ) {
-                  currentMismatches.push({
-                    fieldLabel: targetField.field_label,
-                    expected: existingManualValue,
-                    actual: autoFillValue,
-                    note: "manual value conflict",
-                  });
-                }
-              }
-            }
-          });
+               // --- START: New Validation Logic ---
+               const validationError = validateField(targetField, autoFillValue);
+
+               if (validationError) {
+                 // Extracted data is invalid, so create a mismatch.
+                 currentMismatches.push({
+                   fieldLabel: targetField.field_label,
+                   expected: `A valid value (e.g., within min/max range)`,
+                   actual: autoFillValue,
+                   note: `validation failed: ${validationError}`,
+                 });
+               } else {
+                 // --- Original auto-fill logic, now in an 'else' block ---
+                 if (
+                   existingManualValue.toLowerCase() === "" ||
+                   existingManualValue.toLowerCase() ===
+                     autoFillValue.toLowerCase() ||
+                   (autoFilledFields[targetFieldId] &&
+                     autoFilledFields[targetFieldId].verifiedByDocType ===
+                       docTypeKey)
+                 ) {
+                   if (
+                     currentFormDataSnapshot[targetFieldId] !== autoFillValue
+                   ) {
+                     currentFormDataSnapshot[targetFieldId] = autoFillValue;
+                     updatedFormDataFlag = true;
+                   }
+                   newAutoFilledForThisDoc[targetFieldId] = {
+                     value: autoFillValue,
+                     verifiedByDocType: docTypeKey,
+                     originalSourceKey: sourceKey,
+                   };
+                 } else if (
+                   existingManualValue !== "" &&
+                   existingManualValue.toLowerCase() !==
+                     autoFillValue.toLowerCase()
+                 ) {
+                   currentMismatches.push({
+                     fieldLabel: targetField.field_label,
+                     expected: existingManualValue,
+                     actual: autoFillValue,
+                     note: "manual value conflict",
+                   });
+                 }
+               }
+               // --- END: New Validation Logic ---
+             }
+           }
+         });
 
           if (updatedFormDataFlag) {
             setFormData(currentFormDataSnapshot);
@@ -1292,6 +1289,7 @@ export default function ApplicationForm() {
       autoFilledFields,
       getFieldKeyFromSource,
       docValidationStatus,
+      validateField
     ]
   );
 
@@ -2023,11 +2021,7 @@ export default function ApplicationForm() {
                   e.target.files ? e.target.files[0] : null
                 )
               }
-              disabled={
-                isSubmitting ||
-                isSavingDraft ||
-                docStatusInfo?.status === "validating"
-              }
+              disabled={isSubmitting || isSavingDraft || isExtracting}
               isInvalid={
                 showValidationErrors &&
                 !!fileInputError &&
@@ -2087,6 +2081,7 @@ export default function ApplicationForm() {
                   }}
                   title={`Remove ${docDisplayLabel}`}
                   className="p-1"
+                  disabled={isExtracting}
                 >
                   <FaTrash size={12} />
                 </Button>
@@ -2537,7 +2532,13 @@ export default function ApplicationForm() {
                 onChange={handleInputChange}
                 onFileChange={handleCustomFieldFileChange}
                 error={formErrors[field.field_id]}
-                disabled={isSubmitting || isSavingDraft || showOtpModal}
+                disabled={
+                  isSubmitting ||
+                  isSavingDraft ||
+                  showOtpModal ||
+                  (isExtracting &&
+                    (field.type === "image" || field.type === "document"))
+                }
                 existingFileUrl={existingFileRefs[field.field_id]}
                 isAutoFilled={!!autoFilledFields[field.field_id]}
                 autoFilledDetail={autoFilledFields[field.field_id]}
@@ -2648,7 +2649,7 @@ export default function ApplicationForm() {
                         isInvalid={
                           showValidationErrors && !!formErrors.annexure
                         }
-                        disabled={showOtpModal}
+                        disabled={showOtpModal || isExtracting}
                         size="sm"
                       />
                       {annexureFile && (

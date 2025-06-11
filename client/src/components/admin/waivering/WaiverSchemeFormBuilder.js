@@ -15,11 +15,9 @@ import {
 } from "react-bootstrap";
 import {
   FaInfoCircle,
-  FaPercentage,
   FaCalendarAlt,
   FaCheckCircle,
   FaExclamationTriangle,
-  FaSave,
   FaCloudUploadAlt,
   FaTrash,
   FaPlus,

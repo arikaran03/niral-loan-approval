@@ -1,6 +1,6 @@
 // src/components/admin/FormBuilderContainer.js
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 // Import Link along with other router hooks
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import LoanFormBuilder from './LoanFormBuilder';
@@ -13,18 +13,13 @@ import {
     Spinner,
     Alert,
     Card,
-    Breadcrumb, // Keep Breadcrumb
-    InputGroup, // Keep InputGroup
-    FormControl // Keep FormControl
+    Breadcrumb
 } from 'react-bootstrap';
 import {
     FaPlus,
-    FaInfoCircle,
     FaExclamationTriangle,
     FaCheckCircle,
-    FaEdit,
-    FaSync,
-    FaSearch // Keep FaSearch
+    FaEdit
 } from 'react-icons/fa';
 
 const FormBuilderContainer = () => {

@@ -1,6 +1,6 @@
 // src/routes/waiverSubmission.routes.js  // Or src/routes/user/waiverSubmission.routes.js if user-facing
 import express from 'express';
-import waiverSubmissionController from '../../controllers/waiverSubmission.controller.js'; // Adjust path as needed
+import waiverSubmissionController from '../controllers/waiverSubmission.controller.js'; // Adjust path as needed
 import mongoose from 'mongoose';
 // import authMiddleware from '../middleware/auth.middleware.js'; // Example: if you have auth middleware
 

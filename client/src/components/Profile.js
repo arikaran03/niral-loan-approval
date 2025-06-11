@@ -1,6 +1,6 @@
 // src/components/Profile.jsx
-import React, { useState, useEffect } from "react";
-import { axiosInstance } from "../config"; // Adjust path if needed
+import { useState, useEffect } from "react";
+import { axiosInstance } from "../config";
 import {
   Container,
   Row,
@@ -11,8 +11,7 @@ import {
   Spinner,
   Alert,
   ListGroup,
-  Badge,
-  Image // Added for potential avatar
+  Badge
 } from "react-bootstrap";
 import {
   FaUser,
@@ -24,7 +23,7 @@ import {
   FaInfoCircle,
   FaExternalLinkAlt,
   FaLandmark,
-  FaCog // Added Cog icon
+  FaCog
 } from "react-icons/fa";
 import { Link } from "react-router-dom";
 import './Profile.css'; // Import the CSS

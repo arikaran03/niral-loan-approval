@@ -1,5 +1,5 @@
 // src/components/admin/LoanFormBuilder.js
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Form,
   Button,
@@ -7,31 +7,24 @@ import {
   Row,
   Col,
   Spinner,
-  InputGroup,
   ListGroup,
-  Badge,
   Alert,
-  Accordion, // Added for better layout of KYC
+  Accordion
 } from "react-bootstrap";
 import {
   FaInfoCircle,
   FaDollarSign,
-  FaPercentage,
   FaCalendarAlt,
-  FaClock,
   FaCheckCircle,
   FaExclamationTriangle,
-  FaSave,
   FaCloudUploadAlt,
   FaTrash,
   FaPlus,
   FaEdit,
-  FaListOl,
   FaFileMedicalAlt,
   FaRegSave,
-  FaRedo,
-  FaUserLock, // Icon for KYC
-  FaIdCard, // Icon for Aadhaar/PAN
+  FaUserLock,
+  FaIdCard,
 } from "react-icons/fa";
 import { axiosInstance } from "../../config"; // Assuming axiosInstance is correctly configured
 import "./LoanFormBuilder.css";
@@ -39,7 +32,6 @@ import "./LoanFormBuilder.css";
 // --- Configs & Helpers ---
 const AUTOSAVE_INTERVAL = 10000; // 10 seconds
 
-// Schema IDs for Aadhaar and PAN (these must match the schema_id in your GovDocumentDefinitionModel)
 const AADHAAR_SCHEMA_ID = "aadhaar_card"; // Example, adjust to your actual schema_id
 const PAN_SCHEMA_ID = "pan_card"; // Example, adjust to your actual schema_id
 
@@ -48,7 +40,6 @@ const getFieldKeyFromSource = (sourceString) => {
   const p = sourceString.split(".");
   return p.length > 1 ? p[p.length - 1] : null;
 };
-// ---
 
 const LoanFormBuilder = ({
   initialData = null,
@@ -124,7 +115,6 @@ const LoanFormBuilder = ({
   const formRef = useRef(null);
 
   // State for fetched document definitions
-  const [govDocDefinitions, setGovDocDefinitions] = useState([]);
   const [aadhaarSchemaDef, setAadhaarSchemaDef] = useState(null);
   const [panSchemaDef, setPanSchemaDef] = useState(null);
   const [otherDocTypesForSelection, setOtherDocTypesForSelection] = useState(
@@ -151,7 +141,7 @@ const LoanFormBuilder = ({
           "/api/document/schema-definitions"
         );
         const definitions = response.data || [];
-        setGovDocDefinitions(definitions);
+        // setGovDocDefinitions(definitions);
 
         const aadhaarDef = definitions.find(
           (def) => def.schema_id === AADHAAR_SCHEMA_ID
@@ -1458,26 +1448,38 @@ const LoanFormBuilder = ({
                     { rows: 2, md: 12 }
                   )}
                 </Row>
-                {(field.type === "number" ||
-                  field.type === "text" ||
-                  field.type === "textarea") && (
+                {/* --- MODIFIED SECTION START --- */}
+                {field.type !== "image" && field.type !== "document" && (
                   <Row>
                     {renderCustomFieldInput(
                       index,
                       "min_value",
                       "Min Value / Length",
-                      field.type === "number" ? "number" : "text",
+                      field.type === "date"
+                        ? "date"
+                        : field.type === "datetime"
+                        ? "datetime-local"
+                        : field.type === "time"
+                        ? "time"
+                        : "number", // Default to 'number' for numeric values or lengths
                       { md: 6 }
                     )}
                     {renderCustomFieldInput(
                       index,
                       "max_value",
                       "Max Value / Length",
-                      field.type === "number" ? "number" : "text",
+                      field.type === "date"
+                        ? "date"
+                        : field.type === "datetime"
+                        ? "datetime-local"
+                        : field.type === "time"
+                        ? "time"
+                        : "number", // Default to 'number' for numeric values or lengths
                       { md: 6 }
                     )}
                   </Row>
                 )}
+                {/* --- MODIFIED SECTION END --- */}
                 {(field.type === "select" || field.type === "multiselect") && (
                   <Row>
                     {renderCustomFieldTextarea(

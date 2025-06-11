@@ -1,31 +1,34 @@
 // src/pages/UserDashboard.jsx (or components/dashboard/UserDashboard.jsx)
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Spinner, Alert, Table, Badge, Button, Accordion, ListGroup } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import { axiosInstance } from '../../config'; // Adjust path
+import { axiosInstance } from '../../config';
 import moment from 'moment';
-import { FaTachometerAlt, FaFileAlt, FaCheckCircle, FaTimesCircle, FaClock, FaEye, FaHistory, FaInfoCircle, FaPlus } from 'react-icons/fa'; // Icons
-import './UserDashboard.css'; // Import CSS
+import { FaTachometerAlt, FaFileAlt, FaCheckCircle, FaTimesCircle, FaClock, FaHistory, FaInfoCircle, FaPlus, FaRupeeSign } from 'react-icons/fa';
+import './UserDashboard.css';
 
 // Consistent Stage Labels/Variants/Icons
 const STAGE_LABELS = {
   draft: 'Draft',
   pending: 'Pending Review',
   approved: 'Approved',
-  rejected: 'Rejected'
+  rejected: 'Rejected',
+  paid_to_applicant: 'Paid to Applicant'
 };
 const stageVariants = {
     draft: 'secondary-subtle',
     pending: 'warning-subtle',
     approved: 'success-subtle',
-    rejected: 'danger-subtle'
+    rejected: 'danger-subtle',
+    paid_to_applicant: 'primary-subtle'
 };
 const stageTextEmphasis = {
     draft: 'secondary-emphasis',
     pending: 'warning-emphasis',
     approved: 'success-emphasis',
-    rejected: 'danger-emphasis'
+    rejected: 'danger-emphasis',
+    paid_to_applicant: 'primary-emphasis'
 };
 const getStatusIcon = (stage) => {
     switch (stage) {
@@ -33,6 +36,7 @@ const getStatusIcon = (stage) => {
         case 'rejected': return <FaTimesCircle className="me-1 text-danger" />;
         case 'pending': return <FaClock className="me-1 text-warning" />;
         case 'draft': return <FaFileAlt className="me-1 text-secondary"/>;
+        case 'paid_to_applicant': return <FaRupeeSign className="me-1 text-primary" />;
         default: return null;
     }
 };

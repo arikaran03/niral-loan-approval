@@ -1,5 +1,5 @@
 // src/components/admin/DynamicDocumentForm.js (or your actual path)
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Form,
   Button,
@@ -386,7 +386,7 @@ const DynamicDocumentForm = () => {
 
 
     try {
-      const response = await axiosInstance.post(
+      await axiosInstance.post(
         "/api/document/schema-definition",
         submissionData
       ); 
@@ -520,17 +520,6 @@ const DynamicDocumentForm = () => {
                     {fields.map((fieldItem, index) => { // Changed 'field' to 'fieldItem' to avoid conflict
                     const isMinMaxApplicable = ["text", "textarea", "number", "date", "datetime", "time"].includes(fieldItem.type);
                     const fieldErrorObject = validationErrors.fields && validationErrors.fields[index] ? validationErrors.fields[index] : {};
-                    
-                    // For min/max attributes on date inputs, ensure they are YYYY-MM-DD
-                    // The value in fieldItem.min_value is what the admin types for the schema definition
-                    let minDateForInput = fieldItem.min_value;
-                    let maxDateForInput = fieldItem.max_value;
-                    // If the admin is using a date picker to *define* the min/max for a date field in the schema
-                    if (getMinMaxValueInputType(fieldItem.type) === "date") {
-                         minDateForInput = fieldItem.min_value; // This is already YYYY-MM-DD from the input
-                         maxDateForInput = fieldItem.max_value; // This is already YYYY-MM-DD from the input
-                    }
-
 
                     return (
                         <Card key={index} className="mb-3 p-3 border field-definition-item">
@@ -634,7 +623,7 @@ const DynamicDocumentForm = () => {
                                     <Form.Label>Min Value/Length <span className="text-danger">*</span></Form.Label>
                                     <Form.Control 
                                         type={getMinMaxValueInputType(fieldItem.type)} 
-                                        name="min_value" 
+                                        name="min_value"
                                         value={fieldItem.min_value} // Value admin types for schema definition
                                         onChange={(e) => handleFieldChange(index, e)}
                                         isInvalid={!!fieldErrorObject.min_value}
@@ -649,7 +638,7 @@ const DynamicDocumentForm = () => {
                                     <Form.Control 
                                         type={getMinMaxValueInputType(fieldItem.type)} 
                                         name="max_value" 
-                                        value={fieldItem.max_value} // Value admin types for schema definition
+                                        value={fieldItem.max_value}
                                         onChange={(e) => handleFieldChange(index, e)}
                                         isInvalid={!!fieldErrorObject.max_value}
                                         step={fieldItem.type === "number" ? "any" : undefined}

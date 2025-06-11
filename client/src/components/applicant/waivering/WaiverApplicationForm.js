@@ -1,9 +1,7 @@
 // src/components/application/WaiverApplicationForm.js
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-// PropTypes can be added later if needed for props
-// import PropTypes from "prop-types";
 import {
   Container,
   Card,
@@ -15,20 +13,15 @@ import {
   Alert,
   ListGroup,
   Badge,
-  InputGroup, // Kept for potential use in custom fields
 } from "react-bootstrap";
 import { axiosInstance } from "../../../config"; // Adjust path as per your project structure
 import {
   FaInfoCircle,
-  FaPercentage, // For waiver percentage
-  FaCalendarAlt,
+  FaPercentage,
   FaCheckCircle,
   FaExclamationTriangle,
-  FaSave,
   FaCloudUploadAlt,
   FaTrash,
-  FaPlus,
-  FaEdit,
   FaListOl,
   FaFileMedicalAlt,
   FaRegSave,
@@ -39,16 +32,14 @@ import {
   FaFileUpload
 } from "react-icons/fa";
 import {
-  FileText, // Lucide icon
-  Check,    // Lucide icon
-  AlertCircle, // Lucide icon
-  FileWarning, // Lucide icon
-  UserCheck,   // Lucide icon
-  BarChart3,   // Lucide icon
-  MessageSquareText, // Lucide icon
+  Check,
+  AlertCircle,
+  FileWarning,
+  UserCheck,
+  BarChart3,
+  MessageSquareText,
 } from "lucide-react";
 import annexurePdf from "../applications/annexure.pdf"; // Adjust path as per your project structure
-import { format, parseISO, isValid } from "date-fns";
 import "../applications/ApplicationForm.css"; // You can reuse or create a new CSS file
 import FaceVerificationApp from "../verification/FaceVerificationApp"; // Adjust path
 import FieldRenderer from "../applications/FieldRenderer"; // Adjust path
@@ -123,7 +114,9 @@ export default function WaiverApplicationForm() {
     if (isoMatch) return isoMatch[1];
     const ddmmMatch = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
     if (!ddmmMatch) return dateStr;
-    const [_, day, month, year] = ddmmMatch;
+    const day = ddmmMatch[1];
+    const month = ddmmMatch[2];
+    const year = ddmmMatch[3];
     return `${year}-${month}-${day}`;
   };
   const formatDateToDDMMYYYY = (isoDateString) => {

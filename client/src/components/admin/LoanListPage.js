@@ -1,6 +1,6 @@
 // src/components/admin/LoanListPage.jsx
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Container, Table, Button, Spinner, Alert, Card, Row, Col, Badge, Tooltip, OverlayTrigger } from "react-bootstrap"; // Added Tooltip, OverlayTrigger
 import { Link } from "react-router-dom";
 import { axiosInstance } from "../../config"; // Adjust path if needed

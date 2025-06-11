@@ -1,9 +1,8 @@
 // src/components/ResultsList.jsx
-import React, { useState } from 'react';
+import { useState } from 'react';
 import PropTypes from 'prop-types';
 import {
   Table,
-  Alert,
   Badge,
   Button,
   Pagination,
@@ -20,12 +19,10 @@ import {
   FaSort,
   FaSortUp,
   FaSortDown,
-  FaFileAlt,
   FaSearch,
-  FaArrowRight,
-  FaFilter // Added Filter icon
+  FaArrowRight
 } from 'react-icons/fa';
-import "./ResultsList.css"; // Import updated CSS
+import "./ResultsList.css";
 
 // Stage labels and variants consistent with potential theme
 const stageLabels = {
