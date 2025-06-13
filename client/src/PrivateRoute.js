@@ -7,8 +7,7 @@ const PrivateRoute = ({ role }) => {
 const token = localStorage.getItem('token');
 const userRole = localStorage.getItem('type');
   if (userRole !== role) {
-    console.log('Role:', role);
-    if (userRole === 'admin' || userRole === 'manager' || userRole === 'staff ') {
+    if (userRole === 'admin' || userRole === 'manager' || userRole === 'staff') {
       return <Navigate to="/console" />;
     }
     if (userRole === 'applicant') {

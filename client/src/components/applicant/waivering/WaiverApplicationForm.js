@@ -44,6 +44,7 @@ import "../applications/ApplicationForm.css"; // You can reuse or create a new C
 import FaceVerificationApp from "../verification/FaceVerificationApp"; // Adjust path
 import FieldRenderer from "../applications/FieldRenderer"; // Adjust path
 import OtpVerificationModal from "../applications/OtpVerificationModal"; // Adjust path
+import LiquidLoader from "../../super/LiquidLoader";
 
 // Define field labels eligible for annexure if mismatched (likely still relevant for applicant details)
 const ANNEXURE_ELIGIBLE_FIELD_LABELS = [
@@ -1000,7 +1001,7 @@ export default function WaiverApplicationForm() {
     return <Badge bg="light" text="dark" className="status-badge">Pending Upload</Badge>;
   };
 
-  if (loading) { return <Container fluid className="d-flex flex-column justify-content-center align-items-center page-loading-container"> <Spinner animation="border" variant="primary" style={{ width: '3rem', height: '3rem' }} /> <p className="mt-3 text-muted fs-5">Loading Waiver Scheme Details...</p> </Container>; }
+  if (loading) <LiquidLoader/>;
   if (!waiverSchemeData && !loading) { return <Container className="mt-5"><Alert variant="danger">{apiError || 'Could not load waiver scheme details.'}</Alert></Container>; }
   if (submissionStatus === 'submitted') { return <Container className="mt-5 text-center"><Alert variant="success" className="shadow-sm"><h3><FaCheckCircle className="me-2"/>Waiver Application Submitted!</h3><p>Your application for "{waiverSchemeData?.title}" has been received.</p><p>Submission ID: <strong>{submissionId}</strong></p><hr/><Button variant="primary" size="sm" onClick={() => navigate('/dashboard')}>Go to Dashboard</Button></Alert></Container>; }
 

@@ -237,8 +237,6 @@ const LoanFormBuilder = ({
     const isStillDirty = currentStateString !== initialDataRef.current;
 
     if (!isStillDirty || internalIsSaving || !loanData.title?.trim()) return;
-
-    console.log("Auto-saving draft...");
     setInternalIsSaving(true);
     try {
       const dataToSave = { ...loanData };
@@ -601,7 +599,6 @@ const LoanFormBuilder = ({
     event.preventDefault();
     if (internalIsSaving) return;
     if (validate(true)) {
-      console.log("Form Validated for Publishing. Submitting:", loanData);
       setInternalIsSaving(true);
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
       try {
@@ -679,7 +676,6 @@ const LoanFormBuilder = ({
         setInternalIsSaving(false);
       }
     } else {
-      console.log("Publish Validation Failed:", errors);
       alert("Please fix the errors marked in red before publishing.");
       const firstErrorKey = Object.keys(errors)[0];
       if (firstErrorKey && formRef.current) {

@@ -12,6 +12,7 @@ import {
 } from 'react-icons/fa'; // Added/changed icons
 import moment from 'moment'; // Use moment for date formatting
 import './AdminDashboard.css'; // Import dedicated CSS
+import LiquidLoader from '../super/LiquidLoader';
 
 // Define colors for charts for consistency
 const COLORS = ['#0d6efd', '#6f42c1', '#d63384', '#fd7e14', '#ffc107', '#198754', '#20c997', '#dc3545', '#6c757d'];
@@ -70,12 +71,7 @@ const AdminDashboard = () => {
 
   // --- Loading State ---
   if (loading) {
-    return (
-      <Container fluid className="d-flex flex-column justify-content-center align-items-center dashboard-message-container">
-        <Spinner animation="border" variant="primary" style={{ width: '3rem', height: '3rem' }} />
-        <p className="mt-3 text-muted fs-5">Loading Dashboard Data...</p>
-      </Container>
-    );
+    return <LiquidLoader/>;
   }
 
   // --- Error State ---

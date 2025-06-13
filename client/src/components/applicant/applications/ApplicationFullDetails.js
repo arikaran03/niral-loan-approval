@@ -36,6 +36,7 @@ import { format, parseISO, isValid } from 'date-fns';
 import moment from 'moment'; // Keep moment for history 'fromNow'
 import './ApplicationFullDetails.css'; // Import custom styles
 import { FaRupeeSign } from 'react-icons/fa';
+import LiquidLoader from '../../super/LiquidLoader';
 
 // Stage definitions (consistent)
 const STAGE_LABELS = {
@@ -78,24 +79,60 @@ function ImageLoader({ imageId, alt }) {
   const objectURLRef = useRef(null);
 
   useEffect(() => {
-    let isMounted = true; setLoading(true); setError(false); setSrc(null);
-    if (objectURLRef.current) { URL.revokeObjectURL(objectURLRef.current); objectURLRef.current = null; }
-    if (!imageId || typeof imageId !== 'string' || imageId.length < 10) { setError(true); setLoading(false); return; }
-    let requestTimeout = setTimeout(() => { if (isMounted && loading) { setError(true); setLoading(false); } }, 15000);
+    let isMounted = true;
+    setLoading(true);
+    setError(false);
+    setSrc(null);
+
+    if (objectURLRef.current) {
+        URL.revokeObjectURL(objectURLRef.current);
+        objectURLRef.current = null;
+    }
+
+    if (!imageId || typeof imageId !== 'string' || imageId.length < 10) {
+        setError(true);
+        setLoading(false);
+        return;
+    }
+
+    const abortController = new AbortController();
+    const signal = abortController.signal;
+
     (async () => {
       try {
-        // Fetch image blob from the dedicated endpoint
-        const res = await axiosInstance.get(`/api/image/${imageId}`, { responseType: 'blob' });
-        clearTimeout(requestTimeout);
-        if (!isMounted) return;
-        const newObjectURL = URL.createObjectURL(res.data);
-        objectURLRef.current = newObjectURL;
-        setSrc(newObjectURL);
-      } catch (err) { clearTimeout(requestTimeout); console.error('Failed to load image', imageId, err); if (isMounted) setError(true); }
-      finally { if (isMounted) setLoading(false); }
+        const res = await axiosInstance.get(`/api/image/${imageId}`, { responseType: 'blob', signal });
+        if (isMounted) {
+          const newObjectURL = URL.createObjectURL(res.data);
+          objectURLRef.current = newObjectURL;
+          setSrc(newObjectURL);
+        }
+      } catch (err) {
+        if (err.name !== 'CanceledError' && isMounted) {
+          console.error('Failed to load image', imageId, err);
+          setError(true);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
     })();
-    return () => { isMounted = false; clearTimeout(requestTimeout); if (objectURLRef.current) { URL.revokeObjectURL(objectURLRef.current); objectURLRef.current = null; } };
-  }, [imageId, loading]);
+
+    return () => {
+      isMounted = false;
+      abortController.abort(); // Abort fetch on cleanup
+      if (objectURLRef.current) {
+        URL.revokeObjectURL(objectURLRef.current);
+        objectURLRef.current = null;
+      }
+    };
+  // =================================================================
+  // ## THE FIX IS HERE ##
+  // The dependency array is corrected to only include `imageId`.
+  // This prevents the component from re-fetching infinitely.
+  // =================================================================
+  }, [imageId]);
+
 
   if (loading) return <div className="image-loader text-center p-3"><Spinner animation="border" size="sm" variant="secondary"/></div>;
   if (error || !src) return <div className="image-error text-muted small text-center p-2"><AlertTriangle size={18} className="text-danger me-1"/>(Image unavailable)</div>;
@@ -117,7 +154,6 @@ export default function ApplicationFullDetails() {
   const [submission, setSubmission] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // Removed actionInProgress state as actions are not performed on this page anymore
 
   // Fetch the specific submission on mount
   useEffect(() => {
@@ -126,7 +162,6 @@ export default function ApplicationFullDetails() {
     (async () => {
       setLoading(true); setError(null);
       try {
-        // Fetch submission, ensure fileRefs are included (they are by default unless excluded)
         const { data } = await axiosInstance.get(`/api/application/submissions/${submissionId}`);
         if (isMounted) setSubmission(data);
       } catch (err) { console.error("Error fetching submission:", err); if (isMounted) setError(err.response?.data?.error || 'Failed to load submission details.'); }
@@ -142,13 +177,13 @@ export default function ApplicationFullDetails() {
   }
 
   // --- Render Logic ---
-  if (loading) { /* ... loading state ... */
-    return ( <Container fluid className="d-flex flex-column justify-content-center align-items-center page-loading-container"> <Spinner animation="border" variant="primary" style={{ width: '3rem', height: '3rem' }} /> <p className="mt-3 text-muted fs-5">Loading Application Details...</p> </Container> );
+  if (loading) {
+    return <LiquidLoader/>;
   }
-  if (error) { /* ... error state ... */
+  if (error) {
     return ( <Container fluid className="p-4 page-error-container"> <Alert variant="danger" className="text-center shadow-sm"> <Alert.Heading><XCircle size={24} className="me-2"/> Error Loading Application</Alert.Heading> <p>{error}</p> <hr /> <Button variant="outline-secondary" size="sm" onClick={() => navigate(-1)}> <ArrowLeft size={16} className="me-1" /> Go Back </Button> </Alert> </Container> );
   }
-  if (!submission) { /* ... no data state ... */
+  if (!submission) {
       return ( <Container fluid className="p-4 page-error-container"> <Alert variant="warning" className="text-center shadow-sm">Application data not found.</Alert> </Container> );
   }
 
@@ -170,15 +205,15 @@ export default function ApplicationFullDetails() {
       ...(fields || []),
       ...(requiredDocumentRefs || []).map(docRef => ({
           field_id: `reqDoc_${docRef.documentName}`,
-          value: null, // Value is not relevant here, only fileRef
-          type: 'image', // Mark as document type
+          value: null,
+          type: 'image',
           field_label: reqDocsLabels[docRef.documentTypeKey] || docRef.documentTypeKey,
-          fileRef: docRef.fileRef // Pass the fileRef
+          fileRef: docRef.fileRef
       }))
   ];
 
   return (
-    <Container fluid className="p-3 p-md-4 application-full-details-page-v2"> {/* Use versioned class */}
+    <Container fluid className="p-3 p-md-4 application-full-details-page-v2">
         {/* Header Row */}
         <Row className="mb-4 align-items-center page-header">
             <Col xs="auto"> <Button variant="outline-secondary" size="sm" onClick={() => navigate(-1)} className="back-button d-inline-flex align-items-center"> <ArrowLeft size={16} className="me-1" /> Back </Button> </Col>
@@ -186,7 +221,6 @@ export default function ApplicationFullDetails() {
                 <h1 className="h4 mb-0 text-dark fw-bold"> Application Details </h1>
                 {loan?.title && <span className="text-muted d-block small">For Loan: {loan.title} (ID: {submission._id})</span>}
             </Col>
-             {/* Display API errors if any occurred during load */}
              {error && submission && ( <Col xs={12} className="mt-2"> <Alert variant="danger" size="sm" onClose={() => setError(null)} dismissible className="action-error-alert"> {error} </Alert> </Col> )}
         </Row>
 
@@ -201,7 +235,6 @@ export default function ApplicationFullDetails() {
                                 {getStatusIcon(stage)} {STAGE_LABELS[stage] || stage}
                             </Badge>
                         </Card.Header>
-                        {/* Use simpler ListGroup for overview */}
                         <ListGroup variant="flush">
                             <ListGroup.Item className="py-2 px-3"><User size={14} className="me-2 text-secondary"/><strong>Applicant:</strong> {submission.user_id?.name || 'N/A'}</ListGroup.Item>
                             <ListGroup.Item className="py-2 px-3"><Hash size={14} className="me-2 text-secondary"/><strong>Account #:</strong> {submission.user_id?.account_number || 'N/A'}</ListGroup.Item>
@@ -219,7 +252,7 @@ export default function ApplicationFullDetails() {
                              {(!history || history.length <= 1) && <p className="text-muted small mb-0 text-center">No status changes yet.</p>}
                              {history && history.length > 1 && (
                                 <ListGroup variant="flush" className="history-list small">
-                                    {[...history].sort((a, b) => new Date(a.changed_at) - new Date(b.changed_at)).reverse() // Sort by date descending
+                                    {[...history].sort((a, b) => new Date(a.changed_at) - new Date(b.changed_at)).reverse()
                                         .map((entry, index) => (
                                         <ListGroup.Item key={index} className="d-flex justify-content-between align-items-center px-0 py-1 history-item">
                                             <span>
@@ -252,15 +285,12 @@ export default function ApplicationFullDetails() {
                                     <tbody>
                                         {allFieldsToDisplay.length > 0 ? allFieldsToDisplay.map((f) => (
                                             <tr key={f.field_id}>
-                                                {/* Label Column */}
                                                 <td className="fw-medium response-label" style={{ width: '40%' }}>
-                                                    {/* Add icon if defined in the merged array */}
                                                     {f.icon && React.createElement(f.icon, { size: 14, className: "me-2 text-secondary" })}
                                                     {f.field_label || <span className="text-muted fst-italic">N/A</span>}
                                                 </td>
-                                                {/* Value/Action Column */}
                                                 <td>
-                                                    {f.type === 'image' ? ( <ImageLoader imageId={f.fileRef} alt={f.field_label} /> ) // Use fileRef directly
+                                                    {f.type === 'image' ? ( <ImageLoader imageId={f.fileRef} alt={f.field_label} /> )
                                                     : f.type === 'document' ? ( f.fileRef ? <a href={`/api/image/${f.fileRef}`} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline-primary d-inline-flex align-items-center">View Document <FileText size={14} className="ms-1"/></a> : <span className="text-muted fst-italic">No document</span> )
                                                     : f.type === 'checkbox' ? ( f.value ? <Badge bg="success-subtle" text="success-emphasis">Yes</Badge> : <Badge bg="secondary-subtle" text="secondary-emphasis">No</Badge> )
                                                     : f.type === 'stage' ? ( <Badge pill bg={stageVariants[f.stage] || 'light'} text={stageTextEmphasis[f.stage] || 'dark'} className="stage-badge-table"> {getStatusIcon(f.stage)} {f.value} </Badge> )
@@ -272,8 +302,6 @@ export default function ApplicationFullDetails() {
                                 </Table>
                             </div>
                         </Card.Body>
-                         {/* Action Buttons Footer (Removed as per previous step - only view) */}
-                         {/* Add back if needed */}
                     </Card>
                 </motion.div>
             </Col>

@@ -1,7 +1,9 @@
 // src/controllers/admin/waiverScheme.controller.js
 import WaiverScheme from '../database/models/WaiverScheme.js'
 import GovDocumentDefinitionModel from '../database/models/GovDocumentDefinitionModel.js'; // Adjust path as needed
-import mongoose from 'mongoose';
+import mongoose, { get } from 'mongoose';
+import LoanSubmissionModel from '../database/models/LoanSubmissionModel.js';
+import WaiverSubmissionModel from '../database/models/WaiverSubmissionModel.js';
 // import { randomUUID } from 'crypto'; // Not used if field_id is handled by frontend
 
 /**
@@ -78,10 +80,29 @@ export default {
       return res.status(400).json({ error: 'Invalid Waiver Scheme ID format.' });
     }
     try {
-      const waiverScheme = await WaiverScheme.findById(id).lean();
+      const waiverScheme = await WaiverScheme.findOne({ _id: id, status: "published" }).lean();
 
       if (!waiverScheme) {
         return res.status(404).json({ error: 'Waiver Scheme not found.' });
+      }
+
+      const getExistigLoanSubmission = await LoanSubmissionModel.findOne({
+        loan_id: waiverScheme.target_loan_id,
+        stage: "paid_to_applicant",
+        user_id: req.user._id
+      }).lean();
+      if (!getExistigLoanSubmission) {
+        return res.status(404).json({ error: "You don't have access to apply for waivering without any existing loan pending repayments" });
+      }
+
+      const isAlreadyWaived = await WaiverSubmissionModel.findOne({
+        waiver_scheme_id: id,
+        user_id: req.user._id,
+        stage: { $ne: "draft" }
+      }).lean();
+
+      if (isAlreadyWaived) {
+        return res.status(400).json({ error: 'You have already applied for this waiver scheme.' });
       }
 
       // --- Logic to fetch and attach document_definitions ---

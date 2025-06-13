@@ -18,7 +18,6 @@ const ApplicationsPage = () => {
   const handleSearchResults = (data) => {
     setLoading(false); // Stop loading indicator once SearchFilterBar has results (or error)
     setError(null); // Clear previous errors on new results
-    console.log("SearchFilterBar finished loading/filtering.");
   };
 
   return (

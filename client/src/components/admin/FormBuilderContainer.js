@@ -40,11 +40,9 @@ const FormBuilderContainer = () => {
     const loadLoanForEditing = useCallback(async (loanId) => {
         // ... (loadLoanForEditing logic remains the same)
         if (!loanId) return;
-        console.log(`Loading loan ${loanId} for editing...`);
         setViewState({ isLoading: true, isSaving: false, error: null, message: 'Loading loan data...' });
         try {
             const response = await axiosInstance.get(`/api/loans/${loanId}`);
-            console.log("Fetched loan data:", response.data);
             setCurrentLoanData(response.data);
             setMode('edit');
             setViewState(prev => ({ ...prev, isLoading: false, message: null }));
@@ -58,7 +56,6 @@ const FormBuilderContainer = () => {
     }, []);
 
     const setupCreateNewLoan = useCallback(() => {
-        console.log("Setting up for new loan creation...");
         setCurrentLoanData(null);
         // Correctly reset viewState, removing the call to the old setError
         setViewState({ isLoading: false, isSaving: false, error: null, message: null });
@@ -78,17 +75,11 @@ const FormBuilderContainer = () => {
 
     // --- Callback Handlers for FormBuilder ---
     const handleSaveLoanDraft = useCallback(async (formData, loanId) => {
-        // ... (handleSaveLoanDraft logic remains the same) ...
-        console.log('Container: handleSaveLoanDraft called.');
         setViewState(prev => ({ ...prev, isSaving: true, error: null, message: 'Saving draft...' }));
-
-        console.log('Form Data:', formData);
         const url = loanId ? `/api/loans/${loanId}` : '/api/loans'; const method = loanId ? 'patch' : 'post';
         const dataPayload = { ...formData, status: 'draft' };
-        console.log(`API Call: ${method.toUpperCase()} ${url}`);
         try {
             const response = await axiosInstance({ method, url, data: dataPayload });
-            console.log('API Response (Draft Save):', response.data);
             setCurrentLoanData(response.data); setMode('edit');
             if (!loanId && response.data?._id) { navigate(`/console/form-builder/${response.data._id}`, { replace: true }); }
             setViewState(prev => ({ ...prev, isSaving: false, error: { type: 'success', message: `Draft ${loanId ? 'updated' : 'created'} successfully!` }, message: null }));
@@ -103,15 +94,11 @@ const FormBuilderContainer = () => {
      }, [navigate]); // Added navigate dependency
 
     const handlePublishLoan = useCallback(async (formData, loanId) => {
-        // ... (handlePublishLoan logic remains the same) ...
-        console.log('Container: handlePublishLoan called.');
         if (!loanId) { const errorMsg = "Please save the loan as a draft before publishing."; setViewState(prev => ({ ...prev, error: { type: 'warning', message: errorMsg } })); throw new Error(errorMsg); }
         setViewState(prev => ({ ...prev, isSaving: true, error: null, message: 'Publishing loan...' }));
         const url = `/api/loans/${loanId}`; const method = 'patch'; const dataPayload = { ...formData, status: 'published' };
-        console.log(`API Call: ${method.toUpperCase()} ${url}`);
         try {
             const response = await axiosInstance({ method, url, data: dataPayload });
-            console.log('API Response (Publish):', response.data);
             setCurrentLoanData(response.data); setMode('edit');
             setViewState(prev => ({ ...prev, isSaving: false, error: { type: 'success', message: 'Loan published successfully!' }, message: null }));
              // setTimeout(() => setViewState(prev => ({...prev, error: null})), 5000); // Optional longer success display

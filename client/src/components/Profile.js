@@ -8,7 +8,6 @@ import {
   Card,
   Form,
   Button,
-  Spinner,
   Alert,
   ListGroup,
   Badge
@@ -26,7 +25,8 @@ import {
   FaCog
 } from "react-icons/fa";
 import { Link } from "react-router-dom";
-import './Profile.css'; // Import the CSS
+import './Profile.css';
+import LiquidLoader from "./super/LiquidLoader";
 
 const Profile = () => {
   const [user, setUser] = useState(null);
@@ -57,13 +57,7 @@ const Profile = () => {
   const submitPassword = (e) => { e.preventDefault(); };
 
   if (loading) {
-    return (
-      // Improved Loading State Centering and Spacing
-      <Container fluid className="d-flex flex-column justify-content-center align-items-center" style={{ minHeight: 'calc(100vh - 100px)' }}> {/* Adjust minHeight */}
-        <Spinner animation="border" variant="primary" style={{ width: '3rem', height: '3rem' }} />
-        <span className="mt-3 text-muted fs-5">Loading Profile</span> {/* Added margin-top and font-size */}
-      </Container>
-    );
+    return <LiquidLoader/>
   }
 
   if (!user) {
@@ -82,6 +76,7 @@ const Profile = () => {
     <Container className="profile-page-container my-4 my-lg-5">
       <Row className="justify-content-center">
         <Col xl={9} lg={10}>
+        
 
           {/* --- Profile Header --- */}
            <div className="profile-header mb-4 text-center">

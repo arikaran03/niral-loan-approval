@@ -336,8 +336,6 @@ export const checkDocumentUniqueness = async (req, res) => {
   console.log("Received POST request for /api/document/check-unique");
   const { schema_definition_id, identifiers_to_check } = req.body;
 
-  console.log(req.body);
-
   if (!schema_definition_id || !mongoose.Types.ObjectId.isValid(schema_definition_id)) {
     console.warn("Validation Error: Invalid or missing schema_definition_id.");
     return res.status(400).json({ message: "Valid schema_definition_id is required." });

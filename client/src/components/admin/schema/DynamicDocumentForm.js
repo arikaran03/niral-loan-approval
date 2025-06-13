@@ -293,7 +293,6 @@ const DynamicDocumentForm = () => {
     setStatusMessage("");
 
     if (!validateForm()) {
-      console.log("Form validation failed. Showing errors.");
       setSubmitStatus("error");
       setStatusMessage("Please fix the errors in the form before submitting.");
       const firstErrorKey = Object.keys(validationErrors)[0];

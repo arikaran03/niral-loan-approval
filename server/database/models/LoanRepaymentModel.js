@@ -107,12 +107,12 @@ const RestructureHistorySchema = new mongoose.Schema({
  */
 const CommunicationLogSchema = new mongoose.Schema({
     log_date:   { type: Date, default: Date.now, required: true },
-    type:       { type: String, enum: ['SMS', 'Email', 'Call', 'Letter', 'System Alert'], required: true },
+    type:       { type: String, enum: ['SMS', 'Email', 'Call', 'Letter', 'System Alert', 'Inquiry'], required: true },
     subject:    { type: String }, 
     summary:    { type: String, required: true },
     recipient:  { type: String, comment: "e.g., masked phone number or email address" },
     sent_by:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, 
-    status:     { type: String, enum: ['Sent', 'Delivered', 'Failed', 'Read'] }
+    status:     { type: String }
 }, { _id: false, timestamps: true, versionKey: false });
 
 /**

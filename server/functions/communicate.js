@@ -422,10 +422,10 @@ async function sendConfiguredEmail(mailDetails) {
     from:
       mailDetails.customFrom ||
       `"${
-        SMTP_SERVER.startsWith("smtp.gmail") ? "Your Gmail App" : "Our Service"
+        SMTP_SERVER.startsWith("smtp.gmail") ? "Docusift" : "Docusift"
       }" <${SENDER_EMAIL}>`,
     to: mailDetails.to,
-    subject: mailDetails.subject,
+    subject: "Do-Not-Reply - Update regarding your loan application",
     html: mailDetails.htmlBody, // Directly use the provided HTML
     text: plainText,
     attachments: mailDetails.attachments || [], // Directly use provided attachments, or empty array if none

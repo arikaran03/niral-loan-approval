@@ -24,6 +24,7 @@ import { format, parseISO, isValid as isValidDate } from 'date-fns';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import './SubmissionDetails.css';
+import LiquidLoader from '../super/LiquidLoader';
 
 // Stage definitions
 const STAGE_LABELS = {
@@ -146,12 +147,7 @@ function ImageLoader({ imageId: imageIdProp, alt, onImageLoad }) {
     };
   }, [imageIdProp, onImageLoad]);
 
-  if (loading) return (
-      <div className="image-placeholder image-loading text-center p-3">
-          <Spinner animation="border" size="sm" variant="secondary"/>
-          <span className="d-block small text-muted mt-1">Loading...</span>
-      </div>
-  );
+  if (loading) return <LiquidLoader/>;
   if (error || !src) return (
       <div className="image-placeholder image-error text-center p-2">
           <LucideAlertTriangle size={24} className="text-danger mb-1"/>
@@ -777,7 +773,7 @@ export default function SubmissionDetails() {
 
 
   if (loading) {
-    return ( <Container fluid className="d-flex flex-column justify-content-center align-items-center page-loading-container"> <Spinner animation="border" variant="primary" style={{ width: '3rem', height: '3rem' }} /> <p className="mt-3 text-muted fs-5">Loading Submission Details...</p> </Container> );
+    return <LiquidLoader />;
   }
   if (error && !submission) {
     return ( <Container fluid className="p-4 page-error-container"> <Alert variant="danger" className="text-center shadow-sm"> <Alert.Heading><XCircle size={24} className="me-2"/> Error Loading Submission</Alert.Heading> <p>{error}</p> <hr /> <Button variant="outline-secondary" size="sm" onClick={() => navigate(-1)}> <ArrowLeft size={16} className="me-1" /> Go Back </Button> </Alert> </Container> );

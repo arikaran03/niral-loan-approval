@@ -57,19 +57,15 @@ const OtpVerificationModal = ({ show, handleClose, mobileNumber, loanTitle, onSu
             // The loanTitle and loanId might still be useful if your backend
             // uses them for logging or context, but not for the message itself.
             const payload = {
-                mobileNumber: mobileNumber,
-                // loanId: loanId, // Optional: if backend uses it for context
-                // loanTitle: loanTitle // Optional: for logging or context
+                mobileNumber: mobileNumber
             };
 
-            console.log("Sending OTP request with payload:", payload);
             const response = await axiosInstance.post('/api/otp/send', payload);
 
             if (response.data && response.data.requestId) {
                 setCurrentRequestId(response.data.requestId); // Store the requestId
                 setOtpSentSuccessfully(true);
                 startResendTimer();
-                console.log("OTP Sent. Request ID:", response.data.requestId);
             } else {
                 // This case should ideally be handled by the error block if API doesn't return requestId on success
                 console.error("OTP send response missing requestId:", response.data);

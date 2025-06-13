@@ -7,6 +7,7 @@ import { axiosInstance } from '../../config';
 import moment from 'moment';
 import { FaTachometerAlt, FaFileAlt, FaCheckCircle, FaTimesCircle, FaClock, FaHistory, FaInfoCircle, FaPlus, FaRupeeSign } from 'react-icons/fa';
 import './UserDashboard.css';
+import LiquidLoader from '../super/LiquidLoader';
 
 // Consistent Stage Labels/Variants/Icons
 const STAGE_LABELS = {
@@ -104,12 +105,7 @@ const UserDashboard = () => {
 
 
     if (loading) {
-        return (
-            <Container fluid className="d-flex flex-column justify-content-center align-items-center page-loading-container">
-                <Spinner animation="border" variant="primary" style={{ width: '3rem', height: '3rem' }} />
-                <p className="mt-3 text-muted fs-5">Loading Your Dashboard...</p>
-            </Container>
-        );
+        return <LiquidLoader />;
     }
 
     return (

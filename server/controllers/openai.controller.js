@@ -74,7 +74,6 @@ const extractExpectedJsonObject = (text) => {
                     item && typeof item.key === "string" && item.hasOwnProperty("value")
                 )
             ) {
-                console.log("Successfully parsed whole original text into expected structure (fallback).");
                 return parsedWhole;
             } else {
                  console.warn("Parsed whole text, but structure is still incorrect (fallback). Parsed:", parsedWhole);
@@ -173,8 +172,6 @@ Strictly return ONLY the JSON object in the specified format: { "entities": [{ "
 If you cannot find a value for a key, use an empty string "" or null for its value.
 If you are unsure about the document type, use "other" as the value for "doc_name".
 `;
-      // console.log("System Prompt:", systemPrompt); // For debugging
-      // console.log("User Prompt constructed with field descriptions."); // For debugging
 
       console.log("Sending request to OpenAI Vision (gpt-4o)...");
 
@@ -202,7 +199,6 @@ If you are unsure about the document type, use "other" as the value for "doc_nam
         response_format: { type: "json_object" }, // Request JSON output
       });
 
-      console.log("OpenAI Response Received.");
       const messageContent = response.choices[0]?.message?.content;
 
       if (!messageContent) {
@@ -216,7 +212,6 @@ If you are unsure about the document type, use "other" as the value for "doc_nam
       let extractedData;
       try {
         extractedData = JSON.parse(messageContent);
-        console.log("Successfully parsed messageContent with JSON.parse().");
       } catch (parseError) {
         console.warn(
           "Failed to parse OpenAI response content directly as JSON object, trying fallback helper. Error:",
@@ -230,7 +225,6 @@ If you are unsure about the document type, use "other" as the value for "doc_nam
             `OpenAI did not return valid JSON matching the expected structure. Response snippet: ${messageContent.substring(0,200)}...`
           );
         }
-        console.log("Parsed OpenAI response using fallback helper.");
       }
 
       // 6. Validate Parsed JSON structure
@@ -290,8 +284,6 @@ If you are unsure about the document type, use "other" as the value for "doc_nam
           }
         });
       }
-      
-      console.log("Derived unique keys:", unique_keys);
 
       // The frontend (DynamicSchemaForm) expects a structure like:
       // ocrRes.data.extracted_data (this should be the map of key-value pairs for form fields)

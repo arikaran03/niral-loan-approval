@@ -9,7 +9,7 @@ import {
   FaPlusCircle,
   FaPaperPlane,
   FaTachometerAlt,
-  FaCreditCard
+  FaCreditCard,
 } from "react-icons/fa";
 import { BANK_NAME } from "../../config";
 import logo from "../../assets/logo.png";
@@ -27,7 +27,7 @@ export default function CustomNavbar() {
 
   // Fetch current user profile - now with caching
   useEffect(() => {
-    let isMounted = true; 
+    let isMounted = true;
 
     const loadUser = async () => {
       try {
@@ -35,62 +35,56 @@ export default function CustomNavbar() {
         if (cachedUser) {
           const parsedUser = JSON.parse(cachedUser);
           if (parsedUser) {
-             if (isMounted) {
-                 console.log("Navbar: Loaded user from cache.");
-                 setUser(parsedUser);
-                 setLoading(false); 
-             }
-            return; 
+            if (isMounted) {
+              setUser(parsedUser);
+              setLoading(false);
+            }
+            return;
           } else {
             localStorage.removeItem(USER_CACHE_KEY);
           }
         }
       } catch (error) {
-        console.error("Navbar: Error reading user cache:", error);
         localStorage.removeItem(USER_CACHE_KEY);
       }
-
-      console.log("Navbar: Cache miss or invalid, calling /api/user/me/navbar");
       try {
         const { data } = await axiosInstance.get("/api/user/me/navbar");
         if (isMounted) {
           setUser(data);
           localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data));
-          console.log("Navbar: User fetched from API and cached.");
         }
       } catch (err) {
-        console.error("Navbar: Failed to fetch user:", err);
-        localStorage.removeItem(USER_CACHE_KEY); 
-        localStorage.clear(); 
+        localStorage.removeItem(USER_CACHE_KEY);
+        localStorage.clear();
         if (isMounted) {
           // Only navigate if not already on login page to avoid loop if /api/user/me fails
           if (location.pathname !== "/login") {
-            navigate("/login"); 
+            navigate("/login");
           }
         }
       } finally {
-         if (isMounted) {
-             setLoading(false); 
-         }
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     // Only load user if not on login page to prevent API call when navigating to login
     if (location.pathname !== "/login") {
-        loadUser();
+      loadUser();
     } else {
-        setLoading(false); // Not loading user, so stop loading state
+      setLoading(false); // Not loading user, so stop loading state
     }
 
-
-    return () => { isMounted = false; } 
-
+    return () => {
+      isMounted = false;
+    };
   }, [navigate, location.pathname]); // Added location.pathname to dependencies
 
   const handleLogout = () => {
     localStorage.removeItem(USER_CACHE_KEY);
-    localStorage.clear(); 
-    setUser(null); 
+    localStorage.clear();
+    setUser(null);
     navigate("/login");
   };
 
@@ -98,7 +92,7 @@ export default function CustomNavbar() {
     return (
       <Navbar expand="lg" className="banking-navbar">
         <Container fluid className="justify-content-center">
-          <Spinner animation="border" variant="light" size="sm"/>
+          <Spinner animation="border" variant="light" size="sm" />
           <span className="ms-2 text-light">Loading navigation...</span>
         </Container>
       </Navbar>
@@ -107,42 +101,41 @@ export default function CustomNavbar() {
 
   // If user is not logged in (e.g., on login page or after failed fetch), don't render full navbar
   if (!user && location.pathname !== "/login") {
-     // This case might occur if API fails and navigate('/login') happens.
-     // To prevent rendering a broken navbar during redirect, return null.
-     return null; 
+    // This case might occur if API fails and navigate('/login') happens.
+    // To prevent rendering a broken navbar during redirect, return null.
+    return null;
   }
   // If on login page and no user, render nothing or a minimal brand
-   if (!user && location.pathname === "/login") {
-     return (
-        <Navbar expand="lg" className="banking-navbar">
-            <Container fluid>
-                 <Navbar.Brand as={Link} to={"/login"} className="navbar-brand-custom">
-                    <div className="logo-container">
-                        <img src={logo} alt="Bank Logo" className="navbar-logo" />
-                    </div>
-                    <div className="brand-text">
-                        <span className="bank-name">{BANK_NAME}</span>
-                    </div>
-                </Navbar.Brand>
-            </Container>
-        </Navbar>
-     );
+  if (!user && location.pathname === "/login") {
+    return (
+      <Navbar expand="lg" className="banking-navbar">
+        <Container fluid>
+          <Navbar.Brand as={Link} to={"/login"} className="navbar-brand-custom">
+            <div className="logo-container">
+              <img src={logo} alt="Bank Logo" className="navbar-logo" />
+            </div>
+            <div className="brand-text">
+              <span className="bank-name">{BANK_NAME}</span>
+            </div>
+          </Navbar.Brand>
+        </Container>
+      </Navbar>
+    );
   }
-  
+
   // This check should be safe now due to the above conditions
   if (!user) return null;
 
-
   const isAdmin = user.type === "manager" || user.type === "staff";
-  const currentPath = location.pathname; 
+  const currentPath = location.pathname;
 
   return (
     <Navbar expand="lg" className="banking-navbar">
       <Container fluid>
-        <Navbar.Brand 
-            as={Link} 
-            to={isAdmin ? "/console" : "/"} 
-            className="navbar-brand-custom"
+        <Navbar.Brand
+          as={Link}
+          to={isAdmin ? "/console" : "/"}
+          className="navbar-brand-custom"
         >
           <div className="logo-container">
             <img src={logo} alt="Bank Logo" className="navbar-logo" />
@@ -164,73 +157,76 @@ export default function CustomNavbar() {
           <Nav className="mx-auto">
             {isAdmin ? (
               <>
-                <Nav.Link 
-                    as={Link} 
-                    to="/console" 
-                    className="nav-link-item"
-                    active={currentPath === "/console"} 
+                <Nav.Link
+                  as={Link}
+                  to="/console"
+                  className="nav-link-item"
+                  active={currentPath === "/console"}
                 >
                   <FaTachometerAlt className="nav-icon" /> Dashboard
                 </Nav.Link>
-                <Nav.Link 
-                    as={Link} 
-                    to="/console/applications" 
-                    className="nav-link-item"
-                    active={currentPath.startsWith("/console/applications")} 
+                <Nav.Link
+                  as={Link}
+                  to="/console/applications"
+                  className="nav-link-item"
+                  active={currentPath.startsWith("/console/applications")}
                 >
                   <FaPaperPlane className="nav-icon" /> Applications
                 </Nav.Link>
-                <Nav.Link 
-                    as={Link} 
-                    to="/console/loans" 
-                    className="nav-link-item"
-                    active={currentPath.startsWith("/console/loans")}
+                <Nav.Link
+                  as={Link}
+                  to="/console/loans"
+                  className="nav-link-item"
+                  active={currentPath.startsWith("/console/loans")}
                 >
                   <FaFolderOpen className="nav-icon" /> Loan Schemes
                 </Nav.Link>
                 {/* Admin Repayments Link */}
-                <Nav.Link 
-                    as={Link} 
-                    to="/console/repayments" 
-                    className="nav-link-item"
-                    active={currentPath.startsWith("/console/repayments")}
+                <Nav.Link
+                  as={Link}
+                  to="/console/repayments"
+                  className="nav-link-item"
+                  active={currentPath.startsWith("/console/repayments")}
                 >
                   <FaCreditCard className="nav-icon" /> Repayments
                 </Nav.Link>
-                <Nav.Link 
-                    as={Link} 
-                    to="/console/form-builder" 
-                    className="nav-link-item"
-                    active={currentPath.startsWith("/console/form-builder")} 
+                <Nav.Link
+                  as={Link}
+                  to="/console/form-builder"
+                  className="nav-link-item"
+                  active={currentPath.startsWith("/console/form-builder")}
                 >
                   <FaPlusCircle className="nav-icon" /> Create Loan
                 </Nav.Link>
               </>
             ) : (
               <>
-                <Nav.Link 
-                    as={Link} 
-                    to="/"  
-                    className="nav-link-item"
-                    active={currentPath === "/"}
-                > 
+                <Nav.Link
+                  as={Link}
+                  to="/"
+                  className="nav-link-item"
+                  active={currentPath === "/"}
+                >
                   <FaPaperPlane className="nav-icon" /> Apply for Loan
                 </Nav.Link>
-                 <Nav.Link 
-                    as={Link} 
-                    to="/dashboard" 
-                    className="nav-link-item"
-                    active={currentPath === "/dashboard" || currentPath.startsWith("/applications/")} // Also active for viewing full application details
-                 > 
+                <Nav.Link
+                  as={Link}
+                  to="/dashboard"
+                  className="nav-link-item"
+                  active={
+                    currentPath === "/dashboard" ||
+                    currentPath.startsWith("/applications/")
+                  } // Also active for viewing full application details
+                >
                   <FaTachometerAlt className="nav-icon" /> My Dashboard
                 </Nav.Link>
                 {/* Applicant Repayments Link */}
-                <Nav.Link 
-                    as={Link} 
-                    to="/repayments" 
-                    className="nav-link-item"
-                    active={currentPath.startsWith("/repayments")}
-                 > 
+                <Nav.Link
+                  as={Link}
+                  to="/repayments"
+                  className="nav-link-item"
+                  active={currentPath.startsWith("/repayments")}
+                >
                   <FaCreditCard className="nav-icon" /> My Repayments
                 </Nav.Link>
               </>
@@ -239,31 +235,46 @@ export default function CustomNavbar() {
 
           <Nav className="align-items-center">
             <Dropdown align="end" className="profile-dropdown">
-              <Dropdown.Toggle 
-                variant="link" 
-                id="profile-dropdown" 
+              <Dropdown.Toggle
+                variant="link"
+                id="profile-dropdown"
                 className="profile-toggle text-decoration-none d-flex align-items-center p-0"
               >
-                <span className="me-2 text-light d-none d-lg-inline mr-2"> 
-                    {user.name || user.email}
+                <span className="me-2 text-light d-none d-lg-inline mr-2">
+                  {user.name || user.email}
                 </span>
                 <FaUserCircle className="profile-icon fs-4 text-light" />
               </Dropdown.Toggle>
 
               <Dropdown.Menu className="dropdown-menu-custom shadow-sm">
-                 <Dropdown.Header>
-                    Signed in as <br/><strong>{user.name || user.email}</strong>
-                 </Dropdown.Header>
-                 <Dropdown.Divider />
-                <Dropdown.Item 
-                    as={Link} 
-                    to={"/profile"} 
-                    className={`dropdown-item-custom ${currentPath === "/profile" ? "active" : ""}`}
-                >
-                  <FaUserCircle className="dropdown-icon" /> Account Settings
-                </Dropdown.Item>
+                <Dropdown.Header>
+                  Signed in as <br />
+                  <strong>{user.name || user.email}</strong>
+                </Dropdown.Header>
+                {!location.pathname.endsWith("/profile") && (
+                  <>
+                    <Dropdown.Divider />
+                    <Dropdown.Item
+                      as={Link}
+                      to={
+                        user.type.includes("user", "applicant")
+                          ? "/profile"
+                          : "/console/profile"
+                      }
+                      className={`dropdown-item-custom ${
+                        currentPath === "/profile" ? "active" : ""
+                      }`}
+                    >
+                      <FaUserCircle className="dropdown-icon" /> Account
+                      Settings
+                    </Dropdown.Item>
+                  </>
+                )}
                 <Dropdown.Divider className="dropdown-divider" />
-                <Dropdown.Item onClick={handleLogout} className="dropdown-item-custom logout-item text-danger">
+                <Dropdown.Item
+                  onClick={handleLogout}
+                  className="dropdown-item-custom logout-item text-danger"
+                >
                   <FaSignOutAlt className="dropdown-icon" /> Logout
                 </Dropdown.Item>
               </Dropdown.Menu>

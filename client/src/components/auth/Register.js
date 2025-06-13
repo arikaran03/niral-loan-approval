@@ -44,12 +44,8 @@ const Register = () => {
       role,
     };
 
-    console.log("Request Body:", requestBody);
-
     try {
       const response = await axiosInstance.post(`/api/auth/register`, requestBody);
-
-      console.log("Response:", response.data);
 
       if (response.status === 201) {
         setTitle("Account Created!");

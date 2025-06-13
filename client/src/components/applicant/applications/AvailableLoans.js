@@ -14,6 +14,7 @@ import { motion } from "framer-motion";
 import { Briefcase, CheckCircle, FileText, Calendar } from "lucide-react"; // Import icons
 import "./AvailableLoans.css"; // Import custom styles
 import { format } from 'date-fns';
+import LiquidLoader from "../../super/LiquidLoader";
 
 const loanCardVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -51,14 +52,7 @@ const AvailableLoans = () => {
   };
 
   if (loading) {
-    return (
-      <Container className="d-flex justify-content-center align-items-center h-75">
-        <div className="loading-container">
-          <Spinner animation="border" variant="primary" size="lg" />
-          <p className="mt-3">Loading available loans...</p>
-        </div>
-      </Container>
-    );
+    return <LiquidLoader />;
   }
 
   return (

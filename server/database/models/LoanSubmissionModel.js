@@ -146,8 +146,6 @@ LoanSubmissionSchema.pre('save', async function(next) {
         const loan = await mongoose.model('Loan').findById(this.loan_id).select('required_documents aadhaar_card_definition pan_card_definition'); // Fetch necessary loan details
         if (!loan) return next(new Error('Associated Loan definition not found for validation.'));
 
-
-        console.log(this);
         // 1. Check for Aadhaar Card file reference in requiredDocumentRefs
         const aadhaarFileRefEntry = this.requiredDocumentRefs.find(ref => ref.documentTypeKey === 'aadhaar_card');
         if (!aadhaarFileRefEntry || !aadhaarFileRefEntry.fileRef) {

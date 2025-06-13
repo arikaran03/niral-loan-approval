@@ -46,6 +46,7 @@ import "./ApplicationForm.css";
 import FaceVerificationApp from "../verification/FaceVerificationApp";
 import FieldRenderer from "./FieldRenderer";
 import OtpVerificationModal from "./OtpVerificationModal"; // Import the OTP Modal
+import LiquidLoader from "../../super/LiquidLoader";
 
 // Define field labels eligible for annexure if mismatched
 const ANNEXURE_ELIGIBLE_FIELD_LABELS = [
@@ -981,9 +982,6 @@ export default function ApplicationForm() {
               : null;
 
             if (mobileNumberFromDB && localPhotoIdForFaceVerification) {
-              console.log(
-                `Aadhaar from GovDB. Mobile for OTP: ${mobileNumberFromDB}, Photo ID: ${localPhotoIdForFaceVerification}`
-              );
               setOtpVerificationMobileNumber(mobileNumberFromDB);
               setShowOtpModal(true);
               // setShowFaceVerificationModule(false); // Face verification deferred until OTP success
@@ -1393,10 +1391,8 @@ export default function ApplicationForm() {
     (success, errorMsg = "") => {
       setIsFaceVerificationComplete(success);
       if (success) {
-        console.log("Face verification successful!");
         setFaceVerificationError("");
       } else {
-        console.error("Face verification failed or was cancelled.");
         setFaceVerificationError(
           errorMsg ||
             "Face verification failed or was cancelled by user. Please try again."
@@ -1439,9 +1435,6 @@ export default function ApplicationForm() {
     setOtpVerificationError(""); // Clear previous errors
 
     try {
-      console.log(
-        `Verifying OTP ${otpValue} for mobile ${otpVerificationMobileNumber}`
-      );
       const response = await axiosInstance.post("/api/otp/verify", {
         // Ensure this endpoint is correct
         mobileNumber: otpVerificationMobileNumber,
@@ -1451,14 +1444,11 @@ export default function ApplicationForm() {
       });
 
       if (response.data.verified) {
-        // Adjust based on your actual API response structure
-        console.log("OTP Verified Successfully!");
         setIsOtpVerified(true);
         setShowOtpModal(false);
         setOtpVerificationError("");
 
         if (aadhaarPhotoIdForVerification) {
-          console.log("Proceeding to Face Verification module.");
           setShowFaceVerificationModule(true);
         } else {
           console.warn(
@@ -1532,7 +1522,6 @@ export default function ApplicationForm() {
 
     setIsSavingDraft(true);
     setApiError("");
-    console.log("Saving draft...");
     try {
       const payloadFields = loanSchemaData.fields.map((f) => ({
         field_id: f.field_id,
@@ -1603,7 +1592,6 @@ export default function ApplicationForm() {
       );
       setDraftSaveStatus({ saved: true, time: new Date() });
       setTimeout(() => setDraftSaveStatus({ saved: false, time: null }), 3000);
-      console.log("Draft saved.");
     } catch (err) {
       console.error("Error saving draft:", err);
       setApiError(err.response?.data?.error || "Draft save failed.");
@@ -1622,7 +1610,6 @@ export default function ApplicationForm() {
     if (runFullValidation(true)) {
       submitApplication();
     } else {
-      console.log("Form validation failed on submit.", formErrors);
       // Consolidate all error messages for the alert
       let errorMessages =
         "Please correct the following issues before submitting:\n";
@@ -1699,7 +1686,6 @@ export default function ApplicationForm() {
     if (isSubmitting) return;
     setIsSubmitting(true);
     setApiError("");
-    console.log("Submitting application...");
     try {
       const filesToUpload = [];
       Object.entries(customFieldFiles).forEach(([fieldId, file]) => {
@@ -1758,7 +1744,6 @@ export default function ApplicationForm() {
       if (existingAnnexureFileRef) {
         uploadedFileRefs["annexure_document"] = existingAnnexureFileRef;
       }
-      console.log("Files needing upload:", filesToUpload);
 
       const uploadPromises = filesToUpload.map(
         async ({ key, file, type, docTypeKey }) => {
@@ -1787,7 +1772,6 @@ export default function ApplicationForm() {
             fieldSchema?.type ||
             (type === "annexure" ? "document" : "document");
           const uploadUrl = "/api/image";
-          console.log(`Uploading ${fileType} for ${docLabel} (key: ${key})...`);
           const fileFormData = new FormData();
           fileFormData.append("file", file);
           try {
@@ -1804,7 +1788,6 @@ export default function ApplicationForm() {
               throw new Error(`File ID missing after uploading ${docLabel}.`);
             }
             uploadedFileRefs[key] = uploadResult.id;
-            console.log(`Upload success for ${key}: ${uploadedFileRefs[key]}`);
           } catch (uploadError) {
             console.error(`Failed to upload file for ${key}:`, uploadError);
             throw new Error(
@@ -1818,7 +1801,6 @@ export default function ApplicationForm() {
         }
       );
       await Promise.all(uploadPromises);
-      console.log("All new files uploaded. Final File Refs:", uploadedFileRefs);
 
       const finalSubmissionFields = loanSchemaData.fields.map((f) => {
         let value = formData[f.field_id] || "";
@@ -1900,14 +1882,12 @@ export default function ApplicationForm() {
         submissionPayload.pan_data = panDataForPayload;
       }
 
-      console.log("Final Submission Payload:", submissionPayload);
       const { data: submissionResult } = await axiosInstance.post(
         `/api/application/${loanId}/submissions`,
         submissionPayload
       );
       const newId = submissionResult._id || submissionResult.id;
       setSubmissionId(newId);
-      console.log("Submission successful:", newId);
       setSubmissionStatus("submitted");
     } catch (err) {
       console.error("Submission failed:", err);
@@ -2252,20 +2232,7 @@ export default function ApplicationForm() {
   };
 
   if (loading) {
-    return (
-      <Container
-        fluid
-        className="d-flex flex-column justify-content-center align-items-center page-loading-container"
-      >
-        {" "}
-        <Spinner
-          animation="border"
-          variant="primary"
-          style={{ width: "3rem", height: "3rem" }}
-        />{" "}
-        <p className="mt-3 text-muted fs-5">Loading Application Details...</p>{" "}
-      </Container>
-    );
+    return <LiquidLoader/>
   }
   if (!loanSchemaData && !loading) {
     return (

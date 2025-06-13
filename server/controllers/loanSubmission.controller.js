@@ -58,8 +58,6 @@ export async function createSubmission(req, res, next) {
         pan_data      // Extracted PAN data object
       } = req.body;
 
-      console.log("Received payload for submission:", req.body);
-
 
       if (!mongoose.Types.ObjectId.isValid(loanId)) {
         return res.status(400).json({ error: 'Invalid loan ID.' });

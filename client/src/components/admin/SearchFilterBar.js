@@ -6,6 +6,7 @@ import FilterInputs from './FilterInputs';
 import ResultsList from './ResultsList';
 import { Alert, Spinner } from 'react-bootstrap';
 import { format, parseISO } from 'date-fns';
+import LiquidLoader from '../super/LiquidLoader';
 
 const processStageOptions = [
   { value: 'pending', label: "Pending Review" },
@@ -52,10 +53,8 @@ const SearchFilterBar = ({ onResults }) => {
         }),
       };
 
-      console.log("Querying /api/submissions with", params);
       const { data } = await axiosInstance.get('/api/application/submissions', { params });
 
-      console.log("API Response:", data);
 
       const formatted = data.map((item) => ({
         id: item._id,
@@ -67,8 +66,6 @@ const SearchFilterBar = ({ onResults }) => {
         stage: item.stage,
         amount: item.amount,
       }));
-
-      console.log("Formatted Results:", formatted); 
 
       setFormFields(formatted);
       setTotalResults(formatted.length);
@@ -138,10 +135,7 @@ const SearchFilterBar = ({ onResults }) => {
       />
 
       {loading ? (
-        <div className="text-center my-5">
-          <Spinner animation="border" variant="primary" />
-          <p className="mt-2 text-muted">Loading applications...</p>
-        </div>
+        <LiquidLoader/>
       ) : error ? (
         <Alert variant="danger" className="mt-4">
           {error}

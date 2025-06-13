@@ -7,6 +7,7 @@ import { axiosInstance } from "../../config"; // Adjust path if needed
 import moment from "moment";
 import { FaEdit, FaFileInvoice, FaList, FaPlus } from 'react-icons/fa';
 import "./LoanListPage.css"; // Import the updated CSS
+import LiquidLoader from "../super/LiquidLoader";
 
 export default function LoanListPage() {
   const [loans, setLoans] = useState([]);
@@ -57,13 +58,7 @@ export default function LoanListPage() {
 
 
   if (loading) {
-    return (
-      // Improved Loading State Centering and Spacing
-      <Container fluid className="d-flex flex-column justify-content-center align-items-center" style={{ minHeight: 'calc(100vh - 100px)' }}> {/* Adjust minHeight */}
-        <Spinner animation="border" variant="primary" style={{ width: '3rem', height: '3rem' }} />
-        <span className="mt-3 text-muted fs-5">Loading Loan Schemes...</span> {/* Added margin-top and font-size */}
-      </Container>
-    );
+    return <LiquidLoader/>;
   }
 
   return (

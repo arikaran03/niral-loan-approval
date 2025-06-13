@@ -42,10 +42,13 @@ export const attachUser = (req, res, next) => {
  *    - Higher-order middleware that only allows users whose req.user.type
  *      is included in the allowedRoles array.
  */
-export const requireRole = (allowedRoles = []) => {
+export const requireRole = (allowedRoles = [], optionAvailable) => {
   return (req, res, next) => {
     if (!req.user || !allowedRoles.includes(req.user.type)) {
-      return res.status(403).json({ error: 'Forbidden' });
+      if (!optionAvailable) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      return next();
     }
     next();
   };

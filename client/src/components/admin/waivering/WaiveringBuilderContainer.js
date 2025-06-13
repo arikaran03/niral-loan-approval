@@ -21,6 +21,7 @@ import {
     FaCheckCircle,
     FaEdit,
 } from 'react-icons/fa';
+import LiquidLoader from '../../super/LiquidLoader.js';
 
 const WaiverBuilderContainer = () => {
     const { waiverId: urlWaiverId } = useParams();
@@ -44,7 +45,6 @@ const WaiverBuilderContainer = () => {
                 setLoansLoadingError(null);
                 // Fetch only published loans, or adjust query as needed
                 const response = await axiosInstance.get('/api/loans');
-                console.log("Fetched available loans:", response.data);
                 setAvailableLoans(response.data || []);
             } catch (err) {
                 console.error("Failed to fetch available loans:", err);
@@ -57,12 +57,10 @@ const WaiverBuilderContainer = () => {
 
     const loadWaiverForEditing = useCallback(async (waiverId) => {
         if (!waiverId) return;
-        console.log(`Loading waiver scheme ${waiverId} for editing...`);
         // Keep isLoading true while fetching waiver data specifically
         setViewState({ isLoading: true, isSaving: false, error: null, message: 'Loading waiver scheme data...' });
         try {
             const response = await axiosInstance.get(`/api/waiver-schemes/${waiverId}`);
-            console.log("Fetched waiver scheme data:", response.data);
             setCurrentWaiverData(response.data);
             setMode('edit');
             setViewState(prev => ({ ...prev, isLoading: false, message: null }));
@@ -76,7 +74,6 @@ const WaiverBuilderContainer = () => {
     }, []);
 
     const setupCreateNewWaiver = useCallback(() => {
-        console.log("Setting up for new waiver scheme creation...");
         setCurrentWaiverData(null);
         // Set isLoading to false as we are ready for creation form
         setViewState({ isLoading: false, isSaving: false, error: null, message: null });
@@ -93,16 +90,13 @@ const WaiverBuilderContainer = () => {
 
 
     const handleSaveWaiverDraft = useCallback(async (formData, waiverId) => {
-        console.log('Container: handleSaveWaiverDraft called with formData:', formData);
         setViewState(prev => ({ ...prev, isSaving: true, error: null, message: 'Saving waiver scheme draft...' }));
         const url = waiverId ? `/api/waiver-schemes/${waiverId}` : '/api/waiver-schemes';
         const method = waiverId ? 'patch' : 'post';
         // Ensure target_loan_id is included if present in formData
         const dataPayload = { ...formData, status: 'draft' };
-        console.log(`API Call: ${method.toUpperCase()} ${url}`, dataPayload);
         try {
             const response = await axiosInstance({ method, url, data: dataPayload });
-            console.log('API Response (Waiver Draft Save):', response.data);
             setCurrentWaiverData(response.data);
             setMode('edit');
             if (!waiverId && response.data?._id) {
@@ -120,7 +114,6 @@ const WaiverBuilderContainer = () => {
      }, [navigate]);
 
     const handlePublishWaiver = useCallback(async (formData, waiverId) => {
-        console.log('Container: handlePublishWaiver called with formData:', formData);
         if (!waiverId) {
             const errorMsg = "Please save the waiver scheme as a draft before publishing.";
             setViewState(prev => ({ ...prev, error: { type: 'warning', message: errorMsg } }));
@@ -137,10 +130,8 @@ const WaiverBuilderContainer = () => {
         const url = `/api/waiver-schemes/${waiverId}`;
         const method = 'patch';
         const dataPayload = { ...formData, status: 'published' };
-        console.log(`API Call: ${method.toUpperCase()} ${url}`, dataPayload);
         try {
             const response = await axiosInstance({ method, url, data: dataPayload });
-            console.log('API Response (Waiver Publish):', response.data);
             setCurrentWaiverData(response.data);
             setMode('edit');
             setViewState(prev => ({ ...prev, isSaving: false, error: { type: 'success', message: 'Waiver scheme published successfully!' }, message: null }));
@@ -224,12 +215,7 @@ const WaiverBuilderContainer = () => {
 
             {/* Show loading spinner if initial waiver data is loading in edit mode, OR if loans are still loading in create mode */}
             {isLoading && (mode === 'edit' || (mode === 'create' && availableLoans.length === 0 && !loansLoadingError)) && (
-                 <div className="text-center p-5">
-                    <Spinner animation="border" variant="primary" style={{ width: '3rem', height: '3rem' }}/>
-                    <p className="mt-3 text-muted">
-                        {mode === 'edit' ? 'Loading Waiver Scheme Data...' : 'Loading available loan products...'}
-                    </p>
-                 </div>
+                <LiquidLoader/>
             )}
 
             {/* Render FormBuilder only when not initial loading OR if loans failed to load (still show form) */}

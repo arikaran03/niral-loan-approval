@@ -23,6 +23,7 @@ import {
   FaArrowRight
 } from 'react-icons/fa';
 import "./ResultsList.css";
+import LiquidLoader from '../super/LiquidLoader';
 
 // Stage labels and variants consistent with potential theme
 const stageLabels = {
@@ -141,9 +142,7 @@ export default function ResultsList({ formFields }) {
 
   // Handle no data initial state
   if (!formFields) {
-     return ( // Show loading or placeholder before data arrives
-        <div className="text-center p-5 text-muted">Loading data...</div>
-     );
+     return <LiquidLoader/>;
   }
 
 

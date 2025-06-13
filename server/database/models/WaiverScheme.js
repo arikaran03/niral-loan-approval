@@ -39,8 +39,7 @@ const waiverSchemeSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ['draft', 'published', 'archived'],
-    default: 'draft',
-    index: true
+    default: 'draft'
   },
 
   // --- NEW: Link to the specific Loan product this waiver applies to ---

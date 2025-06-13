@@ -22,9 +22,8 @@ import WaiverApplicationForm from "./components/applicant/waivering/WaiverApplic
 // Import the new repayment components
 import MyLoanRepaymentsPage from "./components/applicant/repayments/MyLoanRepaymentsPage";
 import LoanRepaymentDetailPage from "./components/applicant/repayments/LoanRepaymentDetailPage";
-import AdminLoanRepaymentsListPage from "./components/admin/repayments/AdminLoanRepaymentsListPage";
-// You'll also need an AdminRepaymentDetailView component, let's assume its path for now:
-// import AdminRepaymentDetailView from "./components/admin/repayments/AdminRepaymentDetailView";
+import AdminRepaymentsDashboard from "./components/admin/repayments/AdminRepaymentsDashboard";
+import AdminRepaymentDetailPage from "./components/admin/repayments/AdminRepaymentDetailPage";
 
 function App() {
   return (
@@ -50,10 +49,9 @@ function App() {
             path="submit-schema"
             element={<DynamicDocumentSubmissionForm />}
           />
-          <Route path="repayments" element={<AdminLoanRepaymentsListPage />} />
-          {/* Assuming you'll create an AdminRepaymentDetailView component */}
-          {/* <Route path="repayments/:repaymentId" element={<AdminRepaymentDetailView />} /> */}
-
+          <Route path="repayments" element={<AdminRepaymentsDashboard/>} />
+          <Route path="repayments/:repaymentId" element={<AdminRepaymentDetailPage />} />
+          <Route path="profile" element={<Profile />} />
           <Route path="*" element={<PageNotFound />} />
         </Route>
 
@@ -65,7 +63,7 @@ function App() {
             path="applications/:submissionId"
             element={<ApplicationFullDetails />}
           />
-          <Route path="/waiver-application/:waiverSchemeId" element={<WaiverApplicationForm />} />
+          <Route path="waiver-application/:waiverSchemeId" element={<WaiverApplicationForm />} />
           <Route path="apply/:loanId" element={<ApplicationForm />} />
 
           {/* Applicant Repayment Routes */}
@@ -74,12 +72,7 @@ function App() {
             path="repayments/:repaymentId"
             element={<LoanRepaymentDetailPage />}
           />
-        </Route>
-
-        {/* Public Routes */}
-
-        <Route path="/profile" element={<PrivateRoute />}>
-          <Route path="" element={<Profile />} />
+           <Route path="profile" element={<Profile />} />
         </Route>
 
         {/* Auth Routes */}

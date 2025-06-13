@@ -37,6 +37,46 @@ router.get(
     loanRepaymentController.getLoanRepaymentDetailsForApplicant
 );
 
+router.get(
+    '/admin/:repaymentId',
+    requireRole(['manager', 'staff', 'admin']),
+    loanRepaymentController.adminGetLoanRepaymentDetails
+);
+
+/**
+ * @route   POST /api/repayments/:repaymentId/communication
+ * @desc    POST communication logs for a specific loan repayment record.
+ * @access  Private (Admin/Manager - controller ensures ownership)
+ */
+router.post(
+    '/:repaymentId/communication',
+    requireRole(['manager', 'staff']),
+    loanRepaymentController.adminAddCommunicationLog
+);
+
+/**
+ * @route   POST /api/repayments/:repaymentId
+ * @access  Private (User/Applicant - controller ensures ownership)
+ * @desc    Update a specific loan repayment record (e.g., for payment updates).
+ */
+router.post(
+    '/:repaymentId/communication-log',
+    requireRole(['user', 'applicant']),
+    addTimestamps, // Good for logging when the update was made
+    loanRepaymentController.applicantAddCommunicationLog
+);
+
+/**
+ * @route   GET /api/repayments/:repaymentId with multiple query parameters
+ * @desc    Get detailed information for a specific loan repayment record with optional filters.
+ * @access  Private (Admin/Manager - controller ensures ownership)
+ */
+router.get(
+    '/',
+    requireRole(['manager', 'staff']),
+    loanRepaymentController.adminSearchRepayments
+);
+
 /**
  * @route   POST /api/repayments/:repaymentId/make-payment
  * @desc    Allows an applicant to initiate a payment towards their loan.

@@ -262,7 +262,6 @@ const DynamicDocumentSubmissionForm = () => {
     }
 
     if (!validateForm()) {
-      console.log("Form validation failed.");
       setSubmitStatus("error");
       setStatusMessage("Please fix the errors in the form before submitting.");
       return;
@@ -280,8 +279,6 @@ const DynamicDocumentSubmissionForm = () => {
     const submissionFieldsData = [];
     currentSchemaDefinition.fields.forEach((field) => {
       const value = formData[field.key]; // This is the File object for file types
-
-      console.log(`Field: ${field.key}, Type: ${field.type}, Value:`, value);
 
       if (field.type === "image" || field.type === "document") {
         if (value instanceof File) {
@@ -317,12 +314,6 @@ const DynamicDocumentSubmissionForm = () => {
     });
 
     formDataToSubmit.append("fieldsData", JSON.stringify(submissionFieldsData));
-
-    console.log("Submitting FormData:", formDataToSubmit);
-    // For debugging, you can iterate FormData:
-    // for (let [key, value] of formDataToSubmit.entries()) {
-    //   console.log(`${key}:`, value);
-    // }
 
     try {
       const response = await axiosInstance.post(
