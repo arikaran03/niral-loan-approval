@@ -249,5 +249,5 @@ export default {
       const msg = formatMongooseError(err); // Use formatMongooseError for consistency
       return res.status(500).json({ error: msg });
     }
-  },
+  }
 };

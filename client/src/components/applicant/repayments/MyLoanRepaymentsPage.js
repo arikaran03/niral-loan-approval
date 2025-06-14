@@ -121,6 +121,7 @@ export default function MyLoanRepaymentsPage() {
                 {repayments.length > 0 && (
                     <Row xs={1} xl={2} className="g-4">
                         {repayments.map(rp => {
+                            rp.total_principal_repaid = Math.ceil(rp.total_principal_repaid || 0); // Ensure total_principal_repaid is a number
                             const progressPercent = rp.disbursed_amount > 0 
                                 ? ((rp.total_principal_repaid || 0) / rp.disbursed_amount) * 100 
                                 : 0;

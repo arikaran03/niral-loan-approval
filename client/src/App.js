@@ -24,6 +24,8 @@ import MyLoanRepaymentsPage from "./components/applicant/repayments/MyLoanRepaym
 import LoanRepaymentDetailPage from "./components/applicant/repayments/LoanRepaymentDetailPage";
 import AdminRepaymentsDashboard from "./components/admin/repayments/AdminRepaymentsDashboard";
 import AdminRepaymentDetailPage from "./components/admin/repayments/AdminRepaymentDetailPage";
+import WaiverSubmissionDetailsPage from "./components/admin/waivering/WaiverSubmissionDetailsPage";
+import AdminWaiverSubmissionsPage from "./components/admin/waivering/AdminWaiverSubmissionsPage";
 
 function App() {
   return (
@@ -38,6 +40,10 @@ function App() {
           <Route path="form-builder" element={<FormBuilderContainer />} />
           <Route path="waiver-builder" element={<WaiverBuilderContainer />} />
           <Route path="waiver-builder/:waiverId" element={<WaiverBuilderContainer />} />
+          <Route path="waiver-submission/:submissionId" element={<WaiverSubmissionDetailsPage />} />
+          <Route path="waiver-submissions" element={<AdminWaiverSubmissionsPage />} />
+          
+          {/* Admin Loan Routes */}
           <Route
             path="form-builder/:loanId"
             element={<FormBuilderContainer />}

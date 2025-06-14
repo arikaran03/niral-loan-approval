@@ -64,7 +64,7 @@ export default function WaiverApplicationForm() {
   const navigate = useNavigate();
 
   // State
-  const [waiverSchemeData, setWaiverSchemeData] = useState(null); // Renamed
+  const [waiverSchemeData, setWaiverSchemeData] = useState({}); // Renamed
   const [formData, setFormData] = useState({}); // For custom fields
   const [requiredDocFiles, setRequiredDocFiles] = useState({});
   const [customFieldFiles, setCustomFieldFiles] = useState({});

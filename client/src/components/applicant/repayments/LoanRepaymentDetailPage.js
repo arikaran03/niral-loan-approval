@@ -49,6 +49,7 @@ import {
 } from "../../../utils/formatters";
 import { axiosInstance } from "../../../config";
 import LiquidLoader from "../../super/LiquidLoader";
+import { useMemo } from "react";
 
 // --- API Call Functions ---
 
@@ -58,7 +59,7 @@ const fetchLoanRepaymentDetailsAPI = async (repaymentId) => {
 };
 
 const sendCommunicationToAdminAPI = async (repaymentId, messageData) => {
-    const response = await axiosInstance.post(`/api/repayments/${repaymentId}/communication-log`, messageData);
+    const response = await axiosInstance.post(`/api/repayments/${repaymentId}/communication`, messageData);
     return response.data;
 };
 
@@ -135,6 +136,21 @@ export default function LoanRepaymentDetailPage() {
   const [confirmForeclosureError, setConfirmForeclosureError] = useState("");
   const [confirmForeclosureSuccess, setConfirmForeclosureSuccess] = useState("");
 
+    const maxPayableCeiled = useMemo(() => {
+    if (!repaymentDetails) return 0;
+
+    let totalRemainingDue = 0;
+    repaymentDetails.scheduled_installments.forEach(inst => {
+        if (!['Paid', 'Waived', 'Cancelled'].includes(inst.status)) {
+            const remaining = (inst.principal_due + inst.interest_due) - 
+                              (inst.principal_paid + inst.interest_paid + inst.principal_waived + inst.interest_waived);
+            totalRemainingDue += remaining > 0 ? remaining : 0;
+        }
+    });
+
+    return Math.ceil(totalRemainingDue);
+  }, [repaymentDetails]);
+
   const loadDetails = useCallback(
     async (isRefresh = false) => {
       if (!repaymentId) {
@@ -203,6 +219,12 @@ export default function LoanRepaymentDetailPage() {
       setPaymentError("Please enter a valid positive payment amount.");
       return;
     }
+    
+    // FIX: Client-side validation against the ceiled max payable amount
+    if (numericPaymentAmount > maxPayableCeiled) {
+        setPaymentError(`Payment amount cannot exceed the maximum of ${formatCurrency(maxPayableCeiled)}.`);
+        return;
+    }
 
     setPaymentSubmitting(true);
     setPaymentError("");
@@ -210,7 +232,7 @@ export default function LoanRepaymentDetailPage() {
     try {
       const response = await makePaymentAPI(repaymentId, { amount: numericPaymentAmount, paymentMethod });
       if (response.success) {
-        setPaymentSuccess(response.message || "Payment initiated successfully! Details will update shortly.");
+        setPaymentSuccess(response.message || "Payment initiated successfully!");
         setTimeout(() => {
           setShowPaymentModal(false);
           loadDetails(true);
@@ -320,12 +342,19 @@ export default function LoanRepaymentDetailPage() {
     original_expected_closure_date, actual_closure_date, prepayment_configuration,
     total_principal_repaid = 0, total_interest_repaid = 0, total_penalties_paid = 0,
     days_past_due = 0, total_current_overdue_amount = 0, applied_waiver_info,
+    total_interest_waived = 0,
   } = repaymentDetails;
 
   const canMakePayment = ["Active", "Active - Overdue", "Active - Grace Period"].includes(loan_repayment_status);
   const canRequestForeclosure = prepayment_configuration?.allow_prepayment && canMakePayment;
   const canApplyForWaiver = loan_id?.applicable_waiver_scheme_id && canMakePayment && !applied_waiver_info;
-  const progressPercent = disbursed_amount > 0 ? (total_principal_repaid / disbursed_amount) * 100 : 0;
+  
+  let progressPercent = 0;
+  if (loan_repayment_status === 'Fully Repaid' || loan_repayment_status === 'Foreclosed') {
+      progressPercent = 100;
+  } else if (disbursed_amount > 0) {
+      progressPercent = (total_principal_repaid / disbursed_amount) * 100;
+  }
   
   const waiverSummary = applied_waiver_info ? `${applied_waiver_info.title}: ${applied_waiver_info.waiver_value}% waiver on ${applied_waiver_info.applicable_on?.replace("_", " ")}.` : null;
 
@@ -392,8 +421,8 @@ export default function LoanRepaymentDetailPage() {
             </Col>
           </Row>
           <div className="mb-4">
-            <div className="d-flex justify-content-between mb-1 small"><span>Loan Progress (Principal Repaid)</span><span>{formatCurrency(total_principal_repaid)} / {formatCurrency(disbursed_amount)}</span></div>
-            <ProgressBar now={progressPercent} label={`${Math.round(progressPercent)}%`} variant="success" striped animated />
+            <div className="d-flex justify-content-between mb-1 small"><span>Loan Progress (Principal Repaid)</span><span>{formatCurrency(Math.ceil(total_principal_repaid))} / {formatCurrency(disbursed_amount)}</span></div>
+            <ProgressBar now={progressPercent} label={`${Math.ceil(progressPercent)}%`} variant="success" striped animated />
           </div>
           <hr className="my-4" />
           <Row>
@@ -410,6 +439,7 @@ export default function LoanRepaymentDetailPage() {
                   {actual_closure_date && <tr><td><strong>Actual Closure:</strong></td><td>{formatDate(actual_closure_date)}</td></tr>}
                   <tr><td><strong>Total Principal Repaid:</strong></td><td className="text-success fw-medium">{formatCurrency(total_principal_repaid)}</td></tr>
                   <tr><td><strong>Total Interest Paid:</strong></td><td className="text-success fw-medium">{formatCurrency(total_interest_repaid)}</td></tr>
+                  {total_interest_waived > 0 && (<tr><td><strong>Total Interest Waived:</strong></td><td className="text-info fw-medium">{formatCurrency(total_interest_waived)}</td></tr>)}
                   {total_penalties_paid > 0 && <tr><td><strong>Total Penalties Paid:</strong></td><td className="text-danger fw-medium">{formatCurrency(total_penalties_paid)}</td></tr>}
                   {total_current_overdue_amount > 0 && <tr><td><strong>Current Overdue Amount:</strong></td><td className="text-danger fw-bold">{formatCurrency(total_current_overdue_amount)}</td></tr>}
                   {applied_waiver_info && <tr><td><strong>Waiver Applied:</strong></td><td><Badge bg="info" text="dark"><Award size={14} className="me-1"/> Yes</Badge><small className="d-block text-muted">{waiverSummary || `Ref: ${applied_waiver_info._id.slice(-8)}`}</small></td></tr>}
@@ -444,12 +474,45 @@ export default function LoanRepaymentDetailPage() {
         </Card.Header>
         <Tab.Content>
           <Tab.Pane eventKey="schedule" active={activeTab === "schedule"}>
-             <Card.Body><Table responsive hover striped size="sm"><thead className="table-light"><tr><th>#</th><th>Due Date</th><th className="text-end">Principal</th><th className="text-end">Interest</th><th className="text-end">Total EMI</th><th className="text-end">Paid</th><th>Status</th></tr></thead><tbody>{scheduled_installments.map((inst) => (<tr key={inst.installment_number} className={inst.status === "Overdue" ? "table-danger" : ""}><td>{inst.installment_number}</td><td>{formatDate(inst.due_date)}</td><td className="text-end">{formatCurrency(inst.principal_due)}</td><td className="text-end">{formatCurrency(inst.interest_due)}</td><td className="text-end fw-bold">{formatCurrency(inst.total_emi_due)}</td><td className="text-end text-success">{formatCurrency(inst.principal_paid + inst.interest_paid)}</td><td><span className="me-1">{getInstallmentStatusIconElement(inst.status)}</span><Badge pill bg={getInstallmentBadgeVariant(inst.status)}>{inst.status}</Badge></td></tr>))}</tbody></Table></Card.Body>
+             <Card.Body>
+              {scheduled_installments.length > 0 ? (
+                <Table responsive hover striped size="sm">
+                  <thead className="table-light">
+                    <tr>
+                      <th>#</th>
+                      <th>Due Date</th>
+                      <th className="text-end">Principal Due</th>
+                      <th className="text-end">Interest Due</th>
+                      <th className="text-end text-info">Interest Waived</th>
+                      <th className="text-end fw-bold">Remaining Due</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scheduled_installments.map((inst) => {
+                      const totalDue = (inst.principal_due || 0) + (inst.interest_due || 0) + (inst.penalty_due || 0);
+                      const totalCredits = (inst.principal_paid || 0) + (inst.interest_paid || 0) + (inst.penalty_paid || 0) + (inst.principal_waived || 0) + (inst.interest_waived || 0) + (inst.penalty_waived || 0);
+                      const remainingDue = totalDue - totalCredits;
+                      return (
+                        <tr key={inst.installment_number} className={inst.status === "Overdue" ? "table-danger" : ""}>
+                          <td>{inst.installment_number}</td>
+                          <td>{formatDate(inst.due_date)}</td>
+                          <td className="text-end">{formatCurrency(inst.principal_due)}</td>
+                          <td className="text-end">{formatCurrency(inst.interest_due)}</td>
+                          <td className="text-end text-info">{inst.interest_waived > 0 ? formatCurrency(inst.interest_waived) : '-'}</td>
+                          <td className="text-end fw-bold">{formatCurrency(remainingDue > 0.01 ? remainingDue : 0)}</td>
+                          <td><span className="me-1">{getInstallmentStatusIconElement(inst.status)}</span><Badge pill bg={getInstallmentBadgeVariant(inst.status)}>{inst.status}</Badge></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </Table>
+              ) : <Alert variant="light" className="text-center mt-3">No installment schedule available.</Alert>}
+            </Card.Body>
           </Tab.Pane>
           <Tab.Pane eventKey="history" active={activeTab === "history"}>
             <Card.Body><Table responsive hover striped size="sm"><thead className="table-light"><tr><th>Date</th><th className="text-end">Amount</th><th>Method</th><th>Reference</th><th>Status</th></tr></thead><tbody>{payment_transactions.map((txn) => (<tr key={txn._id}><td>{formatDate(txn.transaction_date, { hour: '2-digit', minute: '2-digit' })}</td><td className="text-end fw-medium">{formatCurrency(txn.amount_received)}</td><td>{txn.payment_method}</td><td>{txn.reference_id || 'N/A'}</td><td><Badge bg={txn.status === "Cleared" ? "success" : "secondary"}>{txn.status}</Badge></td></tr>))}</tbody></Table></Card.Body>
           </Tab.Pane>
-          
           <Tab.Pane eventKey="communication" active={activeTab === "communication"}>
             <Card.Body>
               <Row>
@@ -494,18 +557,39 @@ export default function LoanRepaymentDetailPage() {
         </Tab.Content>
       </Card>
       
-      <Modal show={showPaymentModal} onHide={handleClosePaymentModal} centered>
-        <Modal.Header closeButton><Modal.Title><DollarSignIcon size={24} className="me-2" />Make a Payment</Modal.Title></Modal.Header>
+<Modal show={showPaymentModal} onHide={handleClosePaymentModal} centered>
+        <Modal.Header closeButton><Modal.Title>Make a Payment</Modal.Title></Modal.Header>
         <Form onSubmit={handlePaymentSubmit}>
           <Modal.Body>
             {paymentSuccess && <Alert variant="success">{paymentSuccess}</Alert>}
             {paymentError && <Alert variant="danger">{paymentError}</Alert>}
-            <Form.Group className="mb-3"><Form.Label>Amount to Pay</Form.Label><InputGroup><InputGroup.Text>₹</InputGroup.Text><Form.Control type="number" placeholder="Enter amount" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} min="1" step="0.01" required disabled={paymentSubmitting} /></InputGroup></Form.Group>
+            
+            <Form.Group className="mb-3">
+              <Form.Label>Amount to Pay</Form.Label>
+              <InputGroup>
+                <InputGroup.Text>₹</InputGroup.Text>
+                <Form.Control 
+                    type="number" 
+                    placeholder="Enter amount" 
+                    value={Math.max(0, parseFloat(paymentAmount) || 0).toFixed(2)}
+                    onChange={(e) => setPaymentAmount(e.target.value)} 
+                    min="1"
+                    max={maxPayableCeiled} // Enforces the max value in the input
+                    step="0.01" 
+                    required 
+                    disabled={paymentSubmitting} 
+                />
+              </InputGroup>
+              <Form.Text className="text-muted">
+                  Maximum payable amount: {formatCurrency(maxPayableCeiled)}
+              </Form.Text>
+            </Form.Group>
+
             <Form.Group className="mb-3"><Form.Label>Payment Method</Form.Label><Form.Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} disabled={paymentSubmitting}><option value="UPI">UPI</option><option value="Card">Credit/Debit Card</option><option value="Bank Transfer">Bank Transfer</option></Form.Select></Form.Group>
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={handleClosePaymentModal} disabled={paymentSubmitting}>Cancel</Button>
-            <Button variant="primary" type="submit" disabled={paymentSubmitting || !paymentAmount}>{paymentSubmitting ? <><Spinner size="sm"/> Processing...</> : "Proceed to Pay"}</Button>
+            <Button variant="primary" type="submit" disabled={paymentSubmitting || !paymentAmount || parseFloat(paymentAmount) > maxPayableCeiled}>{paymentSubmitting ? <><Spinner size="sm"/> Processing...</> : "Proceed to Pay"}</Button>
           </Modal.Footer>
         </Form>
       </Modal>

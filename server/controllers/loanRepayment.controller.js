@@ -6,21 +6,36 @@ import mongoose from "mongoose";
 import { sendConfiguredEmail } from "../functions/communicate.js";
 
 // Helper function for error responses
-const handleError = (res, error, message = "An error occurred", statusCode = 500) => {
-    console.error(message, error);
-    if (error.name === "ValidationError") {
-        const errors = Object.values(error.errors).map((err) => err.message);
-        return res.status(400).json({ success: false, message: "Validation Error", errors });
-    }
-    if (error.name === "CastError" && error.kind === "ObjectId") {
-        return res.status(400).json({ success: false, message: "Invalid ID format." });
-    }
-    return res.status(statusCode).json({ success: false, message, error: error.message });
+const handleError = (
+  res,
+  error,
+  message = "An error occurred",
+  statusCode = 500
+) => {
+  console.error(message, error);
+  if (error.name === "ValidationError") {
+    const errors = Object.values(error.errors).map((err) => err.message);
+    return res
+      .status(400)
+      .json({ success: false, message: "Validation Error", errors });
+  }
+  if (error.name === "CastError" && error.kind === "ObjectId") {
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid ID format." });
+  }
+  return res
+    .status(statusCode)
+    .json({ success: false, message, error: error.message });
 };
 
-
 // --- NEW: Helper functions to generate HTML email bodies ---
-const generateAdminToApplicantEmailHTML = (applicantName, subject, message, loanId) => {
+const generateAdminToApplicantEmailHTML = (
+  applicantName,
+  subject,
+  message,
+  loanId
+) => {
   return `
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
       <h2>Message Regarding Your Loan</h2>
@@ -38,9 +53,15 @@ const generateAdminToApplicantEmailHTML = (applicantName, subject, message, loan
   `;
 };
 
-const generateApplicantToAdminEmailHTML = (applicantName, applicantId, subject, message, repaymentId) => {
-    const adminDashboardLink = `${process.env.FRONTEND_URL}/admin/repayment/${repaymentId}`; // Make sure FRONTEND_URL is in your .env
-    return `
+const generateApplicantToAdminEmailHTML = (
+  applicantName,
+  applicantId,
+  subject,
+  message,
+  repaymentId
+) => {
+  const adminDashboardLink = `${process.env.FRONTEND_URL}/admin/repayment/${repaymentId}`; // Make sure FRONTEND_URL is in your .env
+  return `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2>New Inquiry on Loan Repayment #${repaymentId}</h2>
         <p>A new message has been submitted by an applicant.</p>
@@ -242,6 +263,33 @@ export async function createLoanRepaymentRecordInternal(
   }
 }
 
+const generateLoanPaidOffEmailHTML = (
+  applicantName,
+  loanTitle,
+  closureDate
+) => {
+  const formattedDate = new Date(closureDate).toLocaleDateString("en-IN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  return {
+    subject: `✅ Congratulations! Your Loan "${loanTitle}" is Fully Repaid`,
+    htmlBody: `
+            <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+              <h2>Loan Repayment Complete!</h2>
+              <p>Dear ${applicantName},</p>
+              <p>Congratulations! We are pleased to inform you that you have successfully completed all repayments for your loan: <strong>${loanTitle}</strong>.</p>
+              <p>Your loan account was officially closed on <strong>${formattedDate}</strong>. All obligations regarding this loan have been fulfilled.</p>
+              <p>We thank you for your timely payments and hope to serve you again in the future.</p>
+              <hr style="border: none; border-top: 1px solid #eee;">
+              <p>Sincerely,<br>The Support Team</p>
+            </div>
+        `,
+  };
+};
+
 const loanRepaymentController = {
   getMyLoanRepayments: async (req, res) => {
     try {
@@ -299,15 +347,18 @@ const loanRepaymentController = {
           path: "communication_log.sent_by",
           model: "User",
           select: "name type",
+        })
+        .populate({
+          path: "loan_id",
+          model: "Loan",
+          select: "title required_documents applicable_waiver_scheme_id",
         });
 
       if (!repayment) {
-        return res
-          .status(404)
-          .json({
-            success: false,
-            message: "Loan repayment record not found or access denied.",
-          });
+        return res.status(404).json({
+          success: false,
+          message: "Loan repayment record not found or access denied.",
+        });
       }
 
       let repaymentWithContext = addSenderContextToLogs(
@@ -346,76 +397,102 @@ const loanRepaymentController = {
   // NEW function for applicants to send messages
   applicantAddCommunicationLog: async (req, res) => {
     try {
-        const { repaymentId } = req.params;
-        const userId = req.user._id;
-        const { subject, summary } = req.body;
+      const { repaymentId } = req.params;
+      const userId = req.user._id;
+      const { subject, summary } = req.body;
 
-        if (!mongoose.Types.ObjectId.isValid(repaymentId)) {
-            return res.status(400).json({ success: false, message: "Invalid repayment ID." });
+      if (!mongoose.Types.ObjectId.isValid(repaymentId)) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid repayment ID." });
+      }
+      if (!summary) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Message summary is required." });
+      }
+
+      const repayment = await LoanRepayment.findById(repaymentId).populate(
+        "user_id",
+        "name"
+      );
+
+      if (!repayment) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message: "Loan repayment record not found.",
+          });
+      }
+      if (repayment.user_id._id.toString() !== userId.toString()) {
+        return res
+          .status(403)
+          .json({
+            success: false,
+            message: "You are not authorized to comment on this loan.",
+          });
+      }
+
+      const logEntry = {
+        log_date: new Date(),
+        type: "Inquiry",
+        subject: subject || "A message from applicant",
+        summary: summary,
+        status: "Received",
+        sent_by: userId,
+      };
+      repayment.communication_log.push(logEntry);
+      await repayment.save();
+
+      // --- Send notification email to admin ---
+      try {
+        const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL; // Set this in your .env file
+        if (adminEmail) {
+          await sendConfiguredEmail({
+            to: adminEmail,
+            subject: `[New Inquiry] Regarding Loan Repayment #${repaymentId}`,
+            htmlBody: generateApplicantToAdminEmailHTML(
+              repayment.user_id.name,
+              repayment.user_id._id.toString(),
+              logEntry.subject,
+              logEntry.summary,
+              repaymentId
+            ),
+          });
         }
-        if (!summary) {
-            return res.status(400).json({ success: false, message: "Message summary is required." });
-        }
+      } catch (emailError) {
+        console.error("Failed to send admin notification email:", emailError);
+        // Non-critical error, so we don't fail the whole request.
+      }
 
-        const repayment = await LoanRepayment.findById(repaymentId).populate('user_id', 'name');
+      const updatedRepayment = await LoanRepayment.findById(
+        repaymentId
+      ).populate({
+        path: "communication_log.sent_by",
+        model: "User",
+        select: "name type",
+      });
 
-        if (!repayment) {
-            return res.status(404).json({ success: false, message: "Loan repayment record not found." });
-        }
-        if (repayment.user_id._id.toString() !== userId.toString()) {
-            return res.status(403).json({ success: false, message: "You are not authorized to comment on this loan." });
-        }
-
-        const logEntry = {
-            log_date: new Date(),
-            type: 'Inquiry',
-            subject: subject || 'A message from applicant',
-            summary: summary,
-            status: 'Received',
-            sent_by: userId,
-        };
-        repayment.communication_log.push(logEntry);
-        await repayment.save();
-        
-        // --- Send notification email to admin ---
-        try {
-            const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL; // Set this in your .env file
-            if (adminEmail) {
-                await sendConfiguredEmail({
-                    to: adminEmail,
-                    subject: `[New Inquiry] Regarding Loan Repayment #${repaymentId}`,
-                    htmlBody: generateApplicantToAdminEmailHTML(
-                        repayment.user_id.name,
-                        repayment.user_id._id.toString(),
-                        logEntry.subject,
-                        logEntry.summary,
-                        repaymentId
-                    )
-                });
-            }
-        } catch (emailError) {
-            console.error("Failed to send admin notification email:", emailError);
-            // Non-critical error, so we don't fail the whole request.
-        }
-
-        const updatedRepayment = await LoanRepayment.findById(repaymentId)
-          .populate({ path: 'communication_log.sent_by', model: 'User', select: 'name type' });
-
-        let repaymentWithContext = addSenderContextToLogs(updatedRepayment.toObject(), userId);
-        repaymentWithContext.communication_log = repaymentWithContext.communication_log.map(log => {
-          if (log.sender_context !== 'You' && log.sender_context !== 'System') {
-              log.sender_context = 'Support Team';
+      let repaymentWithContext = addSenderContextToLogs(
+        updatedRepayment.toObject(),
+        userId
+      );
+      repaymentWithContext.communication_log =
+        repaymentWithContext.communication_log.map((log) => {
+          if (log.sender_context !== "You" && log.sender_context !== "System") {
+            log.sender_context = "Support Team";
           }
           return log;
         });
 
-        res.status(201).json({
-            success: true,
-            message: "Message sent successfully.",
-            data: repaymentWithContext.communication_log,
-        });
+      res.status(201).json({
+        success: true,
+        message: "Message sent successfully.",
+        data: repaymentWithContext.communication_log,
+      });
     } catch (error) {
-        handleError(res, error, "Failed to send message.");
+      handleError(res, error, "Failed to send message.");
     }
   },
 
@@ -431,30 +508,26 @@ const loanRepaymentController = {
           .status(400)
           .json({ success: false, message: "Invalid repayment ID format." });
       }
-      if (!userId) {
-        return res
-          .status(401)
-          .json({ success: false, message: "User not authenticated." });
-      }
       if (isNaN(amount) || amount <= 0) {
         return res
           .status(400)
           .json({ success: false, message: "Invalid payment amount." });
       }
-      if (!paymentMethod) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Payment method is required." });
-      }
 
-      const repayment = await LoanRepayment.findById(repaymentId);
+      const repayment = await LoanRepayment.findById(repaymentId).populate(
+        "user_id",
+        "name email"
+      );
+
       if (!repayment) {
-        return res.status(404).json({
-          success: false,
-          message: "Loan repayment record not found.",
-        });
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message: "Loan repayment record not found.",
+          });
       }
-      if (repayment.user_id.toString() !== userId.toString()) {
+      if (repayment.user_id._id.toString() !== userId.toString()) {
         return res
           .status(403)
           .json({ success: false, message: "Access denied." });
@@ -464,17 +537,52 @@ const loanRepaymentController = {
           repayment.loan_repayment_status
         )
       ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: `Loan is already ${repayment.loan_repayment_status}.`,
+          });
+      }
+
+      // --- NEW: Overpayment Validation Logic ---
+      let totalRemainingDue = 0;
+      repayment.scheduled_installments.forEach((inst) => {
+        if (!["Paid", "Waived", "Cancelled"].includes(inst.status)) {
+          const principalDue = inst.principal_due || 0;
+          const interestDue = inst.interest_due || 0;
+          const principalPaid = inst.principal_paid || 0;
+          const interestPaid = inst.interest_paid || 0;
+          const principalWaived = inst.principal_waived || 0;
+          const interestWaived = inst.interest_waived || 0;
+
+          const remainingInstallmentDue =
+            principalDue +
+            interestDue -
+            (principalPaid + interestPaid + principalWaived + interestWaived);
+          totalRemainingDue += remainingInstallmentDue;
+        }
+      });
+
+      const maxPayableAmount = Math.ceil(totalRemainingDue);
+
+      if (amount > maxPayableAmount + 0.01) {
+        // Add 0.01 buffer for floating point issues
         return res.status(400).json({
           success: false,
-          message: `Loan is already ${repayment.loan_repayment_status}.`,
+          message: `Payment amount of ${formatCurrency(
+            amount
+          )} exceeds the maximum payable amount of ${formatCurrency(
+            maxPayableAmount
+          )}. Please pay the exact remaining amount or less.`,
         });
       }
 
       const newTransaction = {
         transaction_date: new Date(),
         amount_received: amount,
-        payment_method: paymentMethod,
-        reference_id: referenceId,
+        payment_method: paymentMethod || "Online",
+        reference_id: referenceId || `PAY-${Date.now()}`,
         payment_mode_details: paymentModeDetails,
         status: "Cleared",
         created_by_type: "User",
@@ -485,61 +593,46 @@ const loanRepaymentController = {
       };
 
       let remainingAmountToAllocate = amount;
+
+      // Payment Allocation Logic (accounts for waivers)
       for (const installment of repayment.scheduled_installments) {
         if (remainingAmountToAllocate <= 0) break;
         if (
           ["Pending", "Overdue", "Partially Paid"].includes(installment.status)
         ) {
-          const interestDueForInstallment =
-            installment.interest_due -
-            installment.interest_paid -
-            installment.interest_waived;
-          if (interestDueForInstallment > 0) {
-            const interestPaidNow = Math.min(
+          // Prioritize Interest
+          const interestRemaining =
+            (installment.interest_due || 0) -
+            (installment.interest_paid || 0) -
+            (installment.interest_waived || 0);
+          if (interestRemaining > 0) {
+            const paidNow = Math.min(
               remainingAmountToAllocate,
-              interestDueForInstallment
+              interestRemaining
             );
-            installment.interest_paid += interestPaidNow;
-            newTransaction.interest_component += interestPaidNow;
-            remainingAmountToAllocate -= interestPaidNow;
+            installment.interest_paid += paidNow;
+            newTransaction.interest_component += paidNow;
+            remainingAmountToAllocate -= paidNow;
           }
-          if (remainingAmountToAllocate > 0) {
-            const principalDueForInstallment =
-              installment.principal_due -
-              installment.principal_paid -
-              installment.principal_waived;
-            if (principalDueForInstallment > 0) {
-              const principalPaidNow = Math.min(
-                remainingAmountToAllocate,
-                principalDueForInstallment
-              );
-              installment.principal_paid += principalPaidNow;
-              newTransaction.principal_component += principalPaidNow;
-              remainingAmountToAllocate -= principalPaidNow;
-            }
-          }
-          const outstandingPrincipalInInstallment =
-            installment.principal_due -
-            installment.principal_paid -
-            installment.principal_waived;
-          const outstandingInterestInInstallment =
-            installment.interest_due -
-            installment.interest_paid -
-            installment.interest_waived;
-          if (
-            outstandingPrincipalInInstallment <= 0.01 &&
-            outstandingInterestInInstallment <= 0.01
-          ) {
-            installment.status = "Paid";
-            installment.last_payment_date_for_installment = new Date();
-          } else if (
-            installment.principal_paid > 0 ||
-            installment.interest_paid > 0
-          ) {
-            installment.status = "Partially Paid";
+          if (remainingAmountToAllocate <= 0) continue;
+
+          // Then Principal
+          const principalRemaining =
+            (installment.principal_due || 0) -
+            (installment.principal_paid || 0) -
+            (installment.principal_waived || 0);
+          if (principalRemaining > 0) {
+            const paidNow = Math.min(
+              remainingAmountToAllocate,
+              principalRemaining
+            );
+            installment.principal_paid += paidNow;
+            newTransaction.principal_component += paidNow;
+            remainingAmountToAllocate -= paidNow;
           }
         }
       }
+
       newTransaction.unallocated_amount = Math.max(
         0,
         remainingAmountToAllocate
@@ -550,51 +643,101 @@ const loanRepaymentController = {
           repayment.payment_transactions.length - 1
         ];
 
+      // Update aggregate totals
       repayment.total_principal_repaid += newTransaction.principal_component;
       repayment.total_interest_repaid += newTransaction.interest_component;
-      repayment.total_penalties_paid += newTransaction.penalty_component;
       repayment.current_outstanding_principal =
         repayment.disbursed_amount -
-        repayment.total_principal_repaid +
+        repayment.total_principal_repaid -
         repayment.total_principal_waived;
-      if (repayment.current_outstanding_principal < 0.01) {
-        repayment.current_outstanding_principal = 0;
+      repayment.last_payment_amount = amount;
+      repayment.last_payment_date = new Date(newTransaction.transaction_date);
+
+      // --- NEW & IMPROVED: Recalculate next due amount and check for completion ---
+      let nextUnsettledInstallment = null;
+      for (const inst of repayment.scheduled_installments) {
+        const remainingDue =
+          inst.principal_due +
+          inst.interest_due -
+          (inst.principal_paid +
+            inst.interest_paid +
+            inst.principal_waived +
+            inst.interest_waived);
+        if (remainingDue <= 0.01) {
+          if (
+            inst.status === "Partially Paid" ||
+            inst.status === "Pending" ||
+            inst.status === "Overdue"
+          ) {
+            inst.status = "Paid";
+            inst.last_payment_date_for_installment = new Date();
+          }
+        } else {
+          if (
+            inst.status === "Pending" ||
+            inst.status === "Partially Paid" ||
+            inst.status === "Overdue"
+          ) {
+            if (!nextUnsettledInstallment) {
+              nextUnsettledInstallment = inst;
+            }
+            // Update status if partially paid
+            if (inst.principal_paid + inst.interest_paid > 0) {
+              inst.status = "Partially Paid";
+            }
+          }
+        }
+      }
+
+      if (nextUnsettledInstallment) {
+        repayment.next_due_date = nextUnsettledInstallment.due_date;
+        const remainingPrincipal =
+          nextUnsettledInstallment.principal_due -
+          nextUnsettledInstallment.principal_paid -
+          nextUnsettledInstallment.principal_waived;
+        const remainingInterest =
+          nextUnsettledInstallment.interest_due -
+          nextUnsettledInstallment.interest_paid -
+          nextUnsettledInstallment.interest_waived;
+        repayment.next_emi_amount = Math.max(
+          0,
+          remainingPrincipal + remainingInterest
+        );
+      } else {
+        // If no unsettled installments are found, the loan is fully paid
         repayment.loan_repayment_status = "Fully Repaid";
         repayment.actual_closure_date = new Date();
         repayment.next_due_date = null;
         repayment.next_emi_amount = 0;
-      } else {
-        const nextPendingInstallment = repayment.scheduled_installments.find(
-          (inst) => inst.status === "Pending"
-        );
-        if (nextPendingInstallment) {
-          repayment.next_due_date = nextPendingInstallment.due_date;
-          repayment.next_emi_amount = nextPendingInstallment.total_emi_due;
-        } else {
-          const firstNotFullyPaid = repayment.scheduled_installments.find(
-            (inst) =>
-              inst.status !== "Paid" &&
-              inst.status !== "Waived" &&
-              inst.status !== "Cancelled"
+        repayment.current_outstanding_principal = 0; // Final cleanup
+
+        // Send completion email
+        try {
+          const loanDetails = await Loan.findById(repayment.loan_id)
+            .select("title")
+            .lean();
+          const { subject, htmlBody } = generateLoanPaidOffEmailHTML(
+            repayment.user_id.name,
+            loanDetails.title,
+            repayment.actual_closure_date
           );
-          if (firstNotFullyPaid) {
-            repayment.next_due_date = firstNotFullyPaid.due_date;
-            repayment.next_emi_amount =
-              firstNotFullyPaid.total_emi_due -
-              (firstNotFullyPaid.principal_paid +
-                firstNotFullyPaid.interest_paid);
-          } else if (repayment.loan_repayment_status !== "Fully Repaid") {
-            repayment.next_due_date = null;
-            repayment.next_emi_amount = 0;
-          }
+          await sendConfiguredEmail({
+            to: repayment.user_id.email,
+            subject,
+            htmlBody,
+          });
+        } catch (emailError) {
+          console.error(
+            `Completion email failed for repayment ${repaymentId}.`,
+            emailError
+          );
         }
       }
-      repayment.last_payment_amount = amount;
-      repayment.last_payment_date = new Date(newTransaction.transaction_date);
+
       await repayment.save();
       res.status(201).json({
         success: true,
-        message: "Payment recorded successfully. Loan details updated.",
+        message: "Payment recorded successfully.",
         data: {
           transactionId: savedTransaction._id,
           repaymentStatus: repayment.loan_repayment_status,
@@ -862,22 +1005,34 @@ const loanRepaymentController = {
     }
   },
 
-adminAddCommunicationLog: async (req, res) => {
+  adminAddCommunicationLog: async (req, res) => {
     try {
       const { repaymentId } = req.params;
       const adminUserId = req.user._id;
       const { type, subject, summary, recipient, status, sendEmail } = req.body;
 
       if (!mongoose.Types.ObjectId.isValid(repaymentId)) {
-        return res.status(400).json({ success: false, message: "Invalid repayment ID." });
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid repayment ID." });
       }
       if (!type || !summary) {
-        return res.status(400).json({ success: false, message: "Type and summary are required." });
+        return res
+          .status(400)
+          .json({ success: false, message: "Type and summary are required." });
       }
 
-      const repayment = await LoanRepayment.findById(repaymentId).populate("user_id", "name email");
+      const repayment = await LoanRepayment.findById(repaymentId).populate(
+        "user_id",
+        "name email"
+      );
       if (!repayment) {
-        return res.status(404).json({ success: false, message: "Loan repayment record not found." });
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message: "Loan repayment record not found.",
+          });
       }
 
       const logEntry = {
@@ -891,33 +1046,45 @@ adminAddCommunicationLog: async (req, res) => {
       };
 
       repayment.communication_log.push(logEntry);
-      const lastLog = repayment.communication_log[repayment.communication_log.length - 1];
+      const lastLog =
+        repayment.communication_log[repayment.communication_log.length - 1];
 
       if (sendEmail && repayment.user_id.email) {
         try {
           await sendConfiguredEmail({
-              to: repayment.user_id.email,
-              subject: subject || "A Message Regarding Your Loan",
-              htmlBody: generateAdminToApplicantEmailHTML(
-                  repayment.user_id.name,
-                  subject,
-                  summary,
-                  repaymentId
-              )
+            to: repayment.user_id.email,
+            subject: subject || "A Message Regarding Your Loan",
+            htmlBody: generateAdminToApplicantEmailHTML(
+              repayment.user_id.name,
+              subject,
+              summary,
+              repaymentId
+            ),
           });
           lastLog.status = "Delivered";
         } catch (emailError) {
-          console.error(`Failed to send communication email for repayment ${repaymentId}:`, emailError);
+          console.error(
+            `Failed to send communication email for repayment ${repaymentId}:`,
+            emailError
+          );
           lastLog.status = "Failed";
         }
       }
-      
+
       await repayment.save();
 
-      const updatedRepayment = await LoanRepayment.findById(repayment._id)
-          .populate({ path: 'communication_log.sent_by', model: 'User', select: 'name type' });
-      
-      const repaymentWithContext = addSenderContextToLogs(updatedRepayment.toObject(), req.user._id);
+      const updatedRepayment = await LoanRepayment.findById(
+        repayment._id
+      ).populate({
+        path: "communication_log.sent_by",
+        model: "User",
+        select: "name type",
+      });
+
+      const repaymentWithContext = addSenderContextToLogs(
+        updatedRepayment.toObject(),
+        req.user._id
+      );
 
       res.status(201).json({
         success: true,

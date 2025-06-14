@@ -30,12 +30,6 @@ router.post('/', waiverSubmissionController.create);
 router.get('/', waiverSubmissionController.list);
 
 
-// 3. GET a single Waiver Submission by ID
-// GET /api/waiver-submissions/:id
-// router.get('/:id', authMiddleware.authenticateAdminOrOwner, validateObjectId, waiverSubmissionController.getById); // Example with auth
-router.get('/:id', validateObjectId, waiverSubmissionController.getById);
-
-
 // 4. UPDATE a Waiver Submission by ID (Admin/System action, e.g., change stage)
 // PATCH /api/waiver-submissions/:id
 // router.patch('/:id', authMiddleware.authenticateAdmin, validateObjectId, waiverSubmissionController.update); // Example with auth
@@ -54,6 +48,21 @@ router.delete('/:id', validateObjectId, waiverSubmissionController.removeOrCance
 // GET all submissions for a specific Waiver Scheme (Admin or public, depending on needs)
 // GET /api/waiver-submissions/scheme/:schemeId
 router.get('/scheme/:schemeId', waiverSubmissionController.listByScheme);
+
+router.patch(
+    '/:submissionId/stage',
+    waiverSubmissionController.updateWaiverSubmissionStage
+);
+
+router.get(
+    '/search',
+    waiverSubmissionController.searchSubmissions
+);
+
+router.get(
+    '/:submissionId',
+    waiverSubmissionController.getSubmissionById
+);
 
 // GET all submissions by a specific User (Admin or the user themselves)
 // GET /api/waiver-submissions/user/:userId (or typically just /user/me from authenticated route)
