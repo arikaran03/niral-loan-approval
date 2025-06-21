@@ -1,64 +1,70 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { axiosInstance } from '../../config';
 import PopInfo from '../super/PopInfo';
 import FilterInputs from './FilterInputs';
 import ResultsList from './ResultsList';
-import { Alert, Spinner } from 'react-bootstrap';
-import { format, parseISO } from 'date-fns';
+import { Alert } from 'react-bootstrap';
+import { format, parseISO, isValid } from 'date-fns';
 import LiquidLoader from '../super/LiquidLoader';
 
 const processStageOptions = [
   { value: 'pending', label: "Pending Review" },
-  { value: 'document_verification', label: "Document Verification" },
-  { value: 'pending_approval', label: "Pending Approval" },
   { value: 'approved', label: "Approved" },
+  { value: 'paid_to_applicant', label: "Paid to Applicant" },
   { value: 'rejected', label: "Rejected" },
 ];
 
+// Helper to get a clean filter object from URLSearchParams
+const getFiltersFromParams = (params, defaultLoanId) => ({
+  loanId: params.get('loanId') || defaultLoanId || '',
+  accountNumber: params.get('accountNumber') || '',
+  applicantName: params.get('applicantName') || '',
+  fromDate: params.get('fromDate') || '',
+  toDate: params.get('toDate') || '',
+  stage: params.get('stage') || '',
+});
+
+
 const SearchFilterBar = ({ onResults }) => {
   const [title] = useState("Search Filters");
-  const [description, setDescription] = useState(
-    "Use the filters below to find specific applications"
-  );
+  const [description, setDescription] = useState("Use the filters below to find specific applications");
   const [status, setStatus] = useState(false);
   const [formFields, setFormFields] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [totalResults, setTotalResults] = useState(0);
 
-  const [filters, setFilters] = useState({
-    loanId: '',
-    accountNumber: '',
-    applicantName: '',
-    fromDate: '',
-    toDate: '',
-    stage: '',
-  });
+  // useSearchParams hook to manage URL state
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const fetchResults = async (query = {}) => {
+  // Initialize filters state from URL or props
+  const [filters, setFilters] = useState(() => getFiltersFromParams(searchParams));
+
+  const fetchResults = useCallback(async (query = {}) => {
     setLoading(true);
     setError(null);
     try {
+      // Build query params for the API request from the filter object
       const params = {
         ...(query.loanId && { loanId: query.loanId }),
         ...(query.accountNumber && { accountNumber: query.accountNumber }),
         ...(query.applicantName && { applicantName: query.applicantName }),
         ...(query.stage && { stage: query.stage }),
-        ...(query.fromDate && {
+        ...(query.fromDate && isValid(new Date(query.fromDate)) && {
           fromDate: format(new Date(query.fromDate), 'yyyy-MM-dd'),
         }),
-        ...(query.toDate && {
+        ...(query.toDate && isValid(new Date(query.toDate)) && {
           toDate: format(new Date(query.toDate), 'yyyy-MM-dd'),
         }),
       };
 
       const { data } = await axiosInstance.get('/api/application/submissions', { params });
 
-
       const formatted = data.map((item) => ({
         id: item._id,
-        loanId: item.loan._id,
+        loanId: item.loan_id,
         loanTitle: item.loan.title,
         applicantName: item.user.name,
         accountNumber: item.user.account_number,
@@ -78,34 +84,42 @@ const SearchFilterBar = ({ onResults }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [onResults]); // `onResults` is a stable function passed from parent
 
+  // Effect now listens to `searchParams` changes (e.g., from URL, back/forward buttons)
   useEffect(() => {
-    fetchResults();
-  }, []);
+    const currentFilters = getFiltersFromParams(searchParams);
+    setFilters(currentFilters); // Sync local state with URL
+    fetchResults(currentFilters);
+  }, [searchParams, fetchResults]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFilters((prev) => ({ ...prev, [name]: value }));
   };
-
+  
+  // handleSearch now updates the URL, which triggers the useEffect to fetch data
   const handleSearch = () => {
-    const clean = Object.fromEntries(
-      Object.entries(filters).filter(([_, v]) => v !== '')
+    const cleanFilters = Object.fromEntries(
+      Object.entries(filters).filter(([, v]) => v != null && v !== '')
     );
-    fetchResults(clean);
+    setSearchParams(cleanFilters, { replace: true });
   };
 
+  // handleReset clears the URL params (except for initial loan_id)
   const handleReset = () => {
-    setFilters({
+    const resetState = {
       loanId: '',
       accountNumber: '',
       applicantName: '',
       fromDate: '',
       toDate: '',
       stage: '',
-    });
-    fetchResults();
+    };
+    setFilters(resetState); // Update local UI immediately
+    
+    const resetParams = {};
+    setSearchParams(resetParams, { replace: true });
   };
 
   const toggleModelStatus = () => {
@@ -153,6 +167,7 @@ const SearchFilterBar = ({ onResults }) => {
 
 SearchFilterBar.propTypes = {
   onResults: PropTypes.func.isRequired,
+  loan_id: PropTypes.string, // The component can optionally be scoped to a loan
 };
 
 export default SearchFilterBar;

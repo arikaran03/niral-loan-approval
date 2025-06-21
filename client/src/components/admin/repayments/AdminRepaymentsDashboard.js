@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container, Card, Form, Row, Col, Button, Table, Badge, Pagination, Spinner, Alert, InputGroup, Accordion } from 'react-bootstrap';
 import { SlidersHorizontal, Search, Eye, XCircle } from 'lucide-react';
-import { formatCurrency, formatDate, getStatusBadgeVariant } from '../../../utils/formatters'; // Adjust path if needed
-import { axiosInstance } from '../../../config'; // Adjust path if needed
-import LiquidLoader from '../../super/LiquidLoader';
+import { formatCurrency, formatDate, getStatusBadgeVariant } from '../../../utils/formatters';
+import { axiosInstance } from '../../../config';
+import LiquidLoader from '../../super/LiquidLoader'; // Ensure this path is correct
 
 // Debounce helper to prevent excessive API calls while typing
 function useDebounce(value, delay) {
@@ -25,6 +25,7 @@ export default function AdminRepaymentsDashboard() {
     const [repayments, setRepayments] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [outstandingRangeError, setOutstandingRangeError] = useState(null); // State for outstanding amount range validation error
     
     // State for filters and pagination
     const [filters, setFilters] = useState({
@@ -45,10 +46,51 @@ export default function AdminRepaymentsDashboard() {
     const fetchRepayments = useCallback(async () => {
         setLoading(true);
         setError('');
+        setOutstandingRangeError(null);
+
+
+        if (debouncedFilters.minOutstanding.startsWith("0") && debouncedFilters.minOutstanding.length > 1) {
+            setOutstandingRangeError("'Min Outstanding' cannot start with zero unless it is exactly '0'.");
+            setLoading(false);
+            setRepayments([]);
+            setPagination({ currentPage: 1, totalPages: 1, totalRecords: 0 });
+            return; // Prevent API call
+        }
+
+        if (debouncedFilters.maxOutstanding.startsWith("0") && debouncedFilters.maxOutstanding.length > 1) {
+            setOutstandingRangeError("'Max Outstanding' cannot start with zero unless it is exactly '0'.");
+            setLoading(false);
+            setRepayments([]);
+            setPagination({ currentPage: 1, totalPages: 1, totalRecords: 0 });
+            return; // Prevent API call
+        }
+
+        const minVal = parseFloat(debouncedFilters.minOutstanding);
+        const maxVal = parseFloat(debouncedFilters.maxOutstanding);
+
+        // **Validation 1: minOutstanding cannot be negative**
+        if (!isNaN(minVal) && minVal < 0) {
+            setOutstandingRangeError("'Min Outstanding' cannot be a negative value.");
+            setLoading(false);
+            setRepayments([]);
+            setPagination({ currentPage: 1, totalPages: 1, totalRecords: 0 });
+            return; // Prevent API call
+        }
+
+        // **Validation 2: minOutstanding cannot be greater than maxOutstanding**
+        if (!isNaN(minVal) && !isNaN(maxVal) && minVal > maxVal) {
+            setOutstandingRangeError("'Min Outstanding' cannot be greater than 'Max Outstanding'.");
+            setLoading(false);
+            setRepayments([]);
+            setPagination({ currentPage: 1, totalPages: 1, totalRecords: 0 });
+            return; // Prevent API call
+        }
+
+
         try {
             // Remove empty filters before creating query string
             const activeFilters = Object.fromEntries(
-                Object.entries(debouncedFilters).filter(([_, v]) => v !== '')
+                Object.entries(debouncedFilters).filter(([, v]) => v !== '')
             );
             
             const params = new URLSearchParams({
@@ -70,7 +112,7 @@ export default function AdminRepaymentsDashboard() {
         } finally {
             setLoading(false);
         }
-    }, [pagination.currentPage, debouncedFilters]);
+    }, [pagination.currentPage, debouncedFilters]); // Added debouncedFilters to deps
 
     useEffect(() => {
         fetchRepayments();
@@ -78,11 +120,31 @@ export default function AdminRepaymentsDashboard() {
 
     const handleFilterChange = (e) => {
         const { name, value } = e.target;
-        setFilters(prev => ({ ...prev, [name]: value }));
-        // Reset to page 1 when filters change
-        if (pagination.currentPage !== 1) {
-            setPagination(prev => ({ ...prev, currentPage: 1 }));
-        }
+        setFilters(prev => {
+            const newFilters = { ...prev, [name]: value };
+
+            const minVal = parseFloat(newFilters.minOutstanding);
+            const maxVal = parseFloat(newFilters.maxOutstanding);
+            let currentError = null; // Use a local variable to manage error state within this function
+
+            // **Real-time Validation 1: minOutstanding cannot be negative**
+            if (name === 'minOutstanding' && !isNaN(minVal) && minVal < 0) {
+                currentError = "'Min Outstanding' cannot be a negative value.";
+            } 
+            // **Real-time Validation 2: minOutstanding cannot be greater than maxOutstanding**
+            else if (!isNaN(minVal) && !isNaN(maxVal) && minVal > maxVal) {
+                currentError = "'Min Outstanding' cannot be greater than 'Max Outstanding'.";
+            }
+            
+            setOutstandingRangeError(currentError); // Set or clear the error based on validation
+
+            // Reset to page 1 when filters change, but only if there's no outstanding error
+            // to avoid resetting page while user is fixing an invalid input.
+            if (pagination.currentPage !== 1 && currentError === null) {
+                setPagination(prev => ({ ...prev, currentPage: 1 }));
+            }
+            return newFilters;
+        });
     };
 
     const handleResetFilters = () => {
@@ -93,12 +155,17 @@ export default function AdminRepaymentsDashboard() {
             minOutstanding: '',
             maxOutstanding: ''
         });
+        setOutstandingRangeError(null); // Clear outstanding range error on reset
         if (pagination.currentPage !== 1) {
             setPagination(prev => ({ ...prev, currentPage: 1 }));
         }
     };
     
     const handlePageChange = (pageNumber) => {
+        // Prevent page change if there's an active outstanding range error
+        if (outstandingRangeError) {
+            return;
+        }
         if (pageNumber > 0 && pageNumber <= pagination.totalPages) {
             setPagination(prev => ({ ...prev, currentPage: pageNumber }));
         }
@@ -143,10 +210,10 @@ export default function AdminRepaymentsDashboard() {
         <Container fluid="lg" className="my-4">
             <h2 className="mb-4 fw-bold">Loan Repayments Dashboard</h2>
 
-            <Accordion className="mb-4">
+            <Accordion defaultActiveKey="0" className="mb-4">
                 <Accordion.Item eventKey="0">
                     <Accordion.Header>
-                        <SlidersHorizontal size={20} className="me-2" /> Filter & Search Repayments
+                        <SlidersHorizontal size={20} className="me-2"  /> Filter & Search Repayments
                     </Accordion.Header>
                     <Accordion.Body className="bg-light">
                         <Form>
@@ -180,9 +247,29 @@ export default function AdminRepaymentsDashboard() {
                                 <Col md={6} lg={3}>
                                      <Form.Label>Outstanding Amount Range</Form.Label>
                                      <InputGroup>
-                                        <Form.Control type="number" placeholder="Min" name="minOutstanding" value={filters.minOutstanding} onChange={handleFilterChange}/>
-                                        <Form.Control type="number" placeholder="Max" name="maxOutstanding" value={filters.maxOutstanding} onChange={handleFilterChange}/>
+                                        <Form.Control
+                                            type="number"
+                                            placeholder="Min"
+                                            name="minOutstanding"
+                                            value={filters.minOutstanding}
+                                            onChange={handleFilterChange}
+                                            isInvalid={!!outstandingRangeError} // Apply Bootstrap invalid style
+                                            min="0"
+                                        />
+                                        <Form.Control
+                                            type="number"
+                                            placeholder="Max"
+                                            name="maxOutstanding"
+                                            value={filters.maxOutstanding}
+                                            onChange={handleFilterChange}
+                                            isInvalid={!!outstandingRangeError} // Apply Bootstrap invalid style
+                                        />
                                      </InputGroup>
+                                     {outstandingRangeError && (
+                                        <Form.Text className="text-danger">
+                                            {outstandingRangeError}
+                                        </Form.Text>
+                                    )}
                                 </Col>
                             </Row>
                             <Row className="mt-3">
@@ -224,9 +311,8 @@ export default function AdminRepaymentsDashboard() {
                             <tbody>
                                 {loading ? (
                                     <tr>
-                                        <td colSpan="7" className="text-center py-5">
-                                            <Spinner animation="border" variant="primary" />
-                                            <p className="mt-2 mb-0">Loading Records...</p>
+                                        <td colSpan="7" className="text-center">
+                                            <LiquidLoader />
                                         </td>
                                     </tr>
                                 ) : repayments.length > 0 ? (
@@ -276,11 +362,11 @@ export default function AdminRepaymentsDashboard() {
                 {repayments.length > 0 && pagination.totalPages > 1 && (
                     <Card.Footer className="d-flex justify-content-center">
                         <Pagination>
-                            <Pagination.First onClick={() => handlePageChange(1)} disabled={pagination.currentPage === 1} />
-                            <Pagination.Prev onClick={() => handlePageChange(pagination.currentPage - 1)} disabled={pagination.currentPage === 1} />
+                            <Pagination.First onClick={() => handlePageChange(1)} disabled={pagination.currentPage === 1 || !!outstandingRangeError} />
+                            <Pagination.Prev onClick={() => handlePageChange(pagination.currentPage - 1)} disabled={pagination.currentPage === 1 || !!outstandingRangeError} />
                             {renderPaginationItems()}
-                            <Pagination.Next onClick={() => handlePageChange(pagination.currentPage + 1)} disabled={pagination.currentPage === pagination.totalPages} />
-                            <Pagination.Last onClick={() => handlePageChange(pagination.totalPages)} disabled={pagination.currentPage === pagination.totalPages} />
+                            <Pagination.Next onClick={() => handlePageChange(pagination.currentPage + 1)} disabled={pagination.currentPage === pagination.totalPages || !!outstandingRangeError} />
+                            <Pagination.Last onClick={() => handlePageChange(pagination.totalPages)} disabled={pagination.currentPage === pagination.totalPages || !!outstandingRangeError} />
                         </Pagination>
                     </Card.Footer>
                 )}

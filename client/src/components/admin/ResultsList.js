@@ -227,7 +227,7 @@ export default function ResultsList({ formFields }) {
                     <Button
                       variant="outline-primary" // Consistent outline style
                       size="sm"
-                      onClick={() => navigate(`/console/applications/${item.id}`)}
+                      onClick={() => navigate(`/console/application/${item.id}`)}
                       className="view-button"
                       title="View Application Details" // Tooltip text
                     >

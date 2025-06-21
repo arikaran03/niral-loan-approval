@@ -1,10 +1,14 @@
 import Loan from '../database/models/LoanModel.js';
 import LoanSubmission from '../database/models/LoanSubmissionModel.js';
+import User from '../database/models/UserModel.js';
 
 export async function getDashboardStats(req, res) {
   try {
     const totalLoans = await Loan.countDocuments();
     const totalSubmissions = await LoanSubmission.countDocuments();
+    const totalUsers = await User.countDocuments({ 
+      type: { $in: ['applicant', 'user'] } 
+    });
 
     // Submissions by stage
     const byStage = await LoanSubmission.aggregate([
@@ -33,7 +37,7 @@ export async function getDashboardStats(req, res) {
       {
         $project: {
           _id: 0,
-          loanTitle: "$loan.title", // Get the loan title
+          loanTitle: "$loan.title",
           count: 1,
         },
       },
@@ -49,22 +53,34 @@ export async function getDashboardStats(req, res) {
       },
     ]);
 
-    // Loans by type (assuming you have a type field in your Loan model)
-    const loansByType = await Loan.aggregate([
-      {
-        $group: {
-          _id: "$type", // Group by the 'type' field in your Loan model
-          count: { $sum: 1 },
+    // **NEW**: Submissions over the last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const submissionsOverTime = await LoanSubmission.aggregate([
+        {
+            $match: {
+                created_at: { $gte: thirtyDaysAgo }
+            }
         },
-      },
-      {
-        $project: {
-          _id: 0,
-          type: "$_id",
-          count: 1
+        {
+            $group: {
+                _id: { $dateToString: { format: "%Y-%m-%d", date: "$created_at" } },
+                count: { $sum: 1 }
+            }
+        },
+        {
+            $sort: { _id: 1 } // Sort by date ascending
+        },
+        {
+            $project: {
+                date: "$_id",
+                count: 1,
+                _id: 0
+            }
         }
-      }
     ]);
+
 
     // Recent Submissions (last 5, for example)
     const recentSubmissions = await LoanSubmission.find()
@@ -77,13 +93,14 @@ export async function getDashboardStats(req, res) {
     return res.json({
       totalLoans,
       totalSubmissions,
+      totalUsers,
       submissionsByStage: byStage.reduce((acc, { _id, count }) => {
         acc[_id] = count;
         return acc;
       }, {}),
       submissionsByLoan,
       averageAmount: averageAmount.length > 0 ? averageAmount[0].avgAmount : 0,
-      loansByType,
+      submissionsOverTime, // <-- Replaced loansByType
       recentSubmissions
     });
   } catch (err) {

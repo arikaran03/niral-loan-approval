@@ -418,20 +418,16 @@ const loanRepaymentController = {
       );
 
       if (!repayment) {
-        return res
-          .status(404)
-          .json({
-            success: false,
-            message: "Loan repayment record not found.",
-          });
+        return res.status(404).json({
+          success: false,
+          message: "Loan repayment record not found.",
+        });
       }
       if (repayment.user_id._id.toString() !== userId.toString()) {
-        return res
-          .status(403)
-          .json({
-            success: false,
-            message: "You are not authorized to comment on this loan.",
-          });
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to comment on this loan.",
+        });
       }
 
       const logEntry = {
@@ -520,12 +516,10 @@ const loanRepaymentController = {
       );
 
       if (!repayment) {
-        return res
-          .status(404)
-          .json({
-            success: false,
-            message: "Loan repayment record not found.",
-          });
+        return res.status(404).json({
+          success: false,
+          message: "Loan repayment record not found.",
+        });
       }
       if (repayment.user_id._id.toString() !== userId.toString()) {
         return res
@@ -537,12 +531,10 @@ const loanRepaymentController = {
           repayment.loan_repayment_status
         )
       ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: `Loan is already ${repayment.loan_repayment_status}.`,
-          });
+        return res.status(400).json({
+          success: false,
+          message: `Loan is already ${repayment.loan_repayment_status}.`,
+        });
       }
 
       // --- NEW: Overpayment Validation Logic ---
@@ -945,13 +937,32 @@ const loanRepaymentController = {
         sortOrder = "desc",
       } = req.query;
 
+      console.log("Admin search repayments query:", req.query);
+
       const query = {};
 
       if (status) query.loan_repayment_status = status;
-      if (userId && mongoose.Types.ObjectId.isValid(userId))
-        query.user_id = userId;
-      if (loanId && mongoose.Types.ObjectId.isValid(loanId))
-        query.loan_id = loanId;
+      if (userId) {
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid user ID format.",
+          });
+        } else {
+          query.user_id = userId;
+        }
+      }
+
+      if (loanId) {
+        if (!mongoose.Types.ObjectId.isValid(loanId)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid loan ID format.",
+          });
+        } else {
+          query.loan_id = loanId;
+        }
+      }
 
       if (minOutstanding || maxOutstanding) {
         query.current_outstanding_principal = {};
@@ -985,8 +996,9 @@ const loanRepaymentController = {
         )
         .limit(parseInt(limit))
         .skip(skip)
-        .sort(sortOptions)
-        .lean();
+        .sort(sortOptions);
+
+      console.log("Repayments found:", repayments.length);
 
       const totalRecords = await LoanRepayment.countDocuments(query);
 
@@ -1027,12 +1039,10 @@ const loanRepaymentController = {
         "name email"
       );
       if (!repayment) {
-        return res
-          .status(404)
-          .json({
-            success: false,
-            message: "Loan repayment record not found.",
-          });
+        return res.status(404).json({
+          success: false,
+          message: "Loan repayment record not found.",
+        });
       }
 
       const logEntry = {

@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { Container, Table, Button, Spinner, Alert, Card, Row, Col, Badge, Tooltip, OverlayTrigger } from "react-bootstrap"; // Added Tooltip, OverlayTrigger
 import { Link } from "react-router-dom";
-import { axiosInstance } from "../../config"; // Adjust path if needed
+import { axiosInstance } from "../../../config"; // Adjust path if needed
 import moment from "moment";
 import { FaEdit, FaFileInvoice, FaList, FaPlus } from 'react-icons/fa';
 import "./LoanListPage.css"; // Import the updated CSS
-import LiquidLoader from "../super/LiquidLoader";
+import LiquidLoader from "../../super/LiquidLoader";
 
 export default function LoanListPage() {
   const [loans, setLoans] = useState([]);
@@ -137,7 +137,7 @@ export default function LoanListPage() {
                             </Link>
                           </OverlayTrigger>
                           <OverlayTrigger placement="top" overlay={(props) => renderTooltip(props, 'View Submissions')}>
-                            <Link to={`/console/submissions/${loan._id}`}>
+                            <Link to={`/console/applications?loanId=${loan._id}`}>
                               <Button size="sm" variant="outline-secondary" className="action-button submissions"> {/* Changed variant */}
                                 <FaFileInvoice />
                               </Button>

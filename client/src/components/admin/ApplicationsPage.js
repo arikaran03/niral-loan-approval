@@ -8,7 +8,6 @@ import {
 } from 'react-bootstrap';
 import { FaSearch } from 'react-icons/fa';
 import SearchFilterBar from './SearchFilterBar'; // Adjust path as needed
-
 const ApplicationsPage = () => {
   const [loading, setLoading] = useState(true); // Keep loading state if SearchFilterBar doesn't handle initial load display
   const [error, setError] = useState(null); // Keep error state for fetch errors within SearchFilterBar
@@ -39,9 +38,6 @@ const ApplicationsPage = () => {
       {/* Pass down handlers and let SearchFilterBar manage its loading/error internally */}
       <SearchFilterBar
         onResults={handleSearchResults}
-        // Optionally pass error/loading setters if SearchFilterBar needs to update parent
-        // setLoading={setLoading}
-        // setError={setError}
       />
 
       {/*

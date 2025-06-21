@@ -1,7 +1,7 @@
 /* src/components/admin/LoanListPage.css */
 
 /* --- Base & Variables --- */
-.loan-list-page {
+.loan-list-page .waiver-scheme-list-page {
   --primary-color: #0d6efd;
   --secondary-color: #6c757d;
   --success-color: #198754;
@@ -14,6 +14,8 @@
   background-color: #f4f7fc; /* Page background */
   min-height: calc(100vh - 60px); /* Example height minus navbar */
 }
+
+
 
 /* --- Header --- */
 .page-header .h3 {

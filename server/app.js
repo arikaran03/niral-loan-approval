@@ -27,6 +27,7 @@ import govSchemaRoutes from "./routes/schema.routes.js";
 import { sendOtp, verifyOtp } from "./functions/communicate.js";
 import waiverSchemeRoutes from "./routes/waiverScheme.routes.js";
 import waiverSubmissionRoutes from "./routes/waiverSubmission.routes.js";
+import LoggerModel from "./database/models/Logger.js";
 
 mongodbConnect();
 
@@ -105,6 +106,34 @@ app.use("/api/auth", authRoutes);
 // Protected routes — require valid JWT
 app.use(authMiddleware);
 app.use(attachUser);
+
+const requestLogger = (req, res, next) => {
+  if (req.path === '/healthcheck') {
+    return next();
+  }
+
+  Promise.resolve().then(() => {
+    try {
+      LoggerModel.create({
+        name: req.user?.name || 'Anonymous', // Use req.user.name if available
+        requestBody: req.method === 'GET' ? {} : req.body, // Don't log GET request bodies
+        urlPath: req.originalUrl,
+      }).catch(err => {
+        console.error('Error logging request:', err);
+        // Don't throw error to prevent affecting main request flow
+      });
+    } catch (error) {
+      console.error('Error in request logger:', error);
+      // Don't block the request even if logging fails
+    }
+  });
+  
+  next();
+};
+
+
+app.use(requestLogger);
+
 
 // User self-service
 app.use("/api/user", userRoutes);

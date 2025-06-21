@@ -1,8 +1,7 @@
 // src/components/admin/WaiverBuilderContainer.js
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-// Assuming you will create a WaiverSchemeFormBuilder similar to LoanFormBuilder
 import WaiverSchemeFormBuilder from './WaiverSchemeFormBuilder';
 import { axiosInstance } from '../../../config.js'; // Ensure this path is correct
 import {
@@ -28,13 +27,12 @@ const WaiverBuilderContainer = () => {
     const navigate = useNavigate();
 
     const [currentWaiverData, setCurrentWaiverData] = useState(null);
-    const [availableLoans, setAvailableLoans] = useState([]); // State for available loans
-    const [loansLoadingError, setLoansLoadingError] = useState(null); // State for loan loading error
+    const [availableLoans, setAvailableLoans] = useState([]);
+    const [loansLoadingError, setLoansLoadingError] = useState(null);
     const [viewState, setViewState] = useState({
-        isLoading: true, // True initially to load either waiver data or set up create mode
+        isLoading: true,
         isSaving: false,
-        error: null,
-        message: null
+        error: null, // Only used for initial load errors
     });
     const [mode, setMode] = useState('create');
 
@@ -43,40 +41,37 @@ const WaiverBuilderContainer = () => {
         const fetchAvailableLoans = async () => {
             try {
                 setLoansLoadingError(null);
-                // Fetch only published loans, or adjust query as needed
                 const response = await axiosInstance.get('/api/loans');
                 setAvailableLoans(response.data || []);
             } catch (err) {
                 console.error("Failed to fetch available loans:", err);
-                setLoansLoadingError("Could not load available loan products. Please try again.");
+                setLoansLoadingError("Could not load available loan products. The form might not work as expected.");
                 setAvailableLoans([]);
             }
         };
         fetchAvailableLoans();
-    }, []); // Fetch once on mount
+    }, []);
 
     const loadWaiverForEditing = useCallback(async (waiverId) => {
         if (!waiverId) return;
-        // Keep isLoading true while fetching waiver data specifically
-        setViewState({ isLoading: true, isSaving: false, error: null, message: 'Loading waiver scheme data...' });
+        setViewState({ isLoading: true, isSaving: false, error: null });
         try {
+            console.log(`Container: Loading waiver scheme for editing (ID: ${waiverId})`);
             const response = await axiosInstance.get(`/api/waiver-schemes/${waiverId}`);
             setCurrentWaiverData(response.data);
             setMode('edit');
-            setViewState(prev => ({ ...prev, isLoading: false, message: null }));
+            setViewState(prev => ({ ...prev, isLoading: false }));
         } catch (err) {
             console.error(`Error fetching waiver scheme ${waiverId}:`, err);
             const errorMsg = err.response?.data?.error || err.message || `Failed to load waiver scheme data (ID: ${waiverId}).`;
-            setViewState({ isLoading: false, isSaving: false, error: { type: 'danger', message: errorMsg }, message: null });
+            setViewState({ isLoading: false, isSaving: false, error: errorMsg });
             setCurrentWaiverData(null);
-            setMode('create');
         }
     }, []);
 
     const setupCreateNewWaiver = useCallback(() => {
         setCurrentWaiverData(null);
-        // Set isLoading to false as we are ready for creation form
-        setViewState({ isLoading: false, isSaving: false, error: null, message: null });
+        setViewState({ isLoading: false, isSaving: false, error: null });
         setMode('create');
     }, []);
 
@@ -90,43 +85,37 @@ const WaiverBuilderContainer = () => {
 
 
     const handleSaveWaiverDraft = useCallback(async (formData, waiverId) => {
-        setViewState(prev => ({ ...prev, isSaving: true, error: null, message: 'Saving waiver scheme draft...' }));
+        setViewState(prev => ({ ...prev, isSaving: true }));
         const url = waiverId ? `/api/waiver-schemes/${waiverId}` : '/api/waiver-schemes';
         const method = waiverId ? 'patch' : 'post';
-        // Ensure target_loan_id is included if present in formData
         const dataPayload = { ...formData, status: 'draft' };
         try {
             const response = await axiosInstance({ method, url, data: dataPayload });
+            console.log('Container: Waiver scheme draft saved:', response.data);
             setCurrentWaiverData(response.data);
             setMode('edit');
             if (!waiverId && response.data?._id) {
                 navigate(`/console/waiver-builder/${response.data._id}`, { replace: true });
             }
-            setViewState(prev => ({ ...prev, isSaving: false, error: { type: 'success', message: `Waiver scheme draft ${waiverId ? 'updated' : 'created'} successfully!` }, message: null }));
-            setTimeout(() => setViewState(prev => ({...prev, error: null})), 4000);
             return response.data;
         } catch (err) {
-            console.error('Container: Error saving waiver scheme draft:', err.response || err);
-            const errorMsg = err.response?.data?.error || err.message || 'Failed to save waiver scheme draft.';
-            setViewState(prev => ({ ...prev, isSaving: false, error: { type: 'danger', message: errorMsg }, message: null }));
-            throw new Error(errorMsg);
+            console.error('Container: Error saving waiver scheme draft:', err);
+            // Re-throw the error for the child component to catch and handle
+            throw err;
+        } finally {
+            setViewState(prev => ({ ...prev, isSaving: false }));
         }
      }, [navigate]);
 
     const handlePublishWaiver = useCallback(async (formData, waiverId) => {
         if (!waiverId) {
-            const errorMsg = "Please save the waiver scheme as a draft before publishing.";
-            setViewState(prev => ({ ...prev, error: { type: 'warning', message: errorMsg } }));
-            throw new Error(errorMsg); // Throw error to be caught by form builder
+            // This validation is better handled in the child component now
+            throw new Error("Please save the waiver scheme as a draft before publishing.");
         }
-        // Critical check: Ensure a target loan is selected from formData
         if (!formData.target_loan_id) {
-            const errorMsg = "A target loan product must be selected before publishing the waiver scheme.";
-            setViewState(prev => ({ ...prev, error: { type: 'warning', message: errorMsg }, message: null }));
-            // It's important that the form builder also handles this error or prevents submission
-            throw new Error(errorMsg);
+            throw new Error("A target loan product must be selected before publishing.");
         }
-        setViewState(prev => ({ ...prev, isSaving: true, error: null, message: 'Publishing waiver scheme...' }));
+        setViewState(prev => ({ ...prev, isSaving: true }));
         const url = `/api/waiver-schemes/${waiverId}`;
         const method = 'patch';
         const dataPayload = { ...formData, status: 'published' };
@@ -134,13 +123,13 @@ const WaiverBuilderContainer = () => {
             const response = await axiosInstance({ method, url, data: dataPayload });
             setCurrentWaiverData(response.data);
             setMode('edit');
-            setViewState(prev => ({ ...prev, isSaving: false, error: { type: 'success', message: 'Waiver scheme published successfully!' }, message: null }));
             return response.data;
         } catch (err) {
-            console.error('Container: Error publishing waiver scheme:', err.response || err);
-            const errorMsg = err.response?.data?.error || err.message || 'Failed to publish waiver scheme.';
-            setViewState(prev => ({ ...prev, isSaving: false, error: { type: 'danger', message: errorMsg }, message: null }));
-            throw new Error(errorMsg);
+            console.error('Container: Error publishing waiver scheme:', err);
+             // Re-throw the error for the child component to catch and handle
+            throw err;
+        } finally {
+            setViewState(prev => ({ ...prev, isSaving: false }));
         }
     }, []);
 
@@ -148,37 +137,33 @@ const WaiverBuilderContainer = () => {
         navigate('/console/waiver-builder');
     };
 
-    const { isLoading, isSaving, error, message } = viewState;
+    const { isLoading, isSaving, error } = viewState;
 
     let statusContent = null;
     let statusVariant = 'light';
-    if (isLoading && (mode === 'edit' || !availableLoans.length)) { // Show loading if fetching waiver or initial loans
+    if (isLoading) {
         statusContent = <><Spinner animation="border" size="sm" /> Loading Data...</>;
         statusVariant = 'info';
     } else if (isSaving) {
-        statusContent = <><Spinner animation="border" size="sm" /> {message || 'Saving...'}</>;
+        statusContent = <><Spinner animation="border" size="sm" /> Saving...</>;
         statusVariant = 'warning';
     } else if (error) {
-        statusContent = <><FaExclamationTriangle /> Error: {error.message}</>;
-        statusVariant = error.type || 'danger';
-    } else if (loansLoadingError && mode === 'create') { // Show loan loading error prominently in create mode
-        statusContent = <><FaExclamationTriangle /> {loansLoadingError}</>;
+        statusContent = <><FaExclamationTriangle /> Error: {error}</>;
         statusVariant = 'danger';
-    } else if (message) {
-        statusContent = message;
-        statusVariant = 'light';
-    } else if (mode === 'edit' && currentWaiverData?.status === 'published') {
-        statusContent = <><FaCheckCircle /> This waiver scheme is currently published.</>;
-        statusVariant = 'success-subtle';
-    } else if (mode === 'edit' && currentWaiverData?.status === 'archived') {
-        statusContent = <><FaExclamationTriangle /> This waiver scheme is archived.</>;
+    } else if (mode === 'create') {
+        statusContent = 'Creating New Waiver Scheme';
         statusVariant = 'secondary';
     } else if (mode === 'edit') {
-        statusContent = <>Editing Waiver Scheme Draft (ID: {currentWaiverData?._id})</>;
-        statusVariant = 'secondary';
-    } else { // Create mode, and loans have loaded (or attempted to load)
-        statusContent = 'Creating New Waiver Scheme Definition';
-        statusVariant = 'secondary';
+        if (currentWaiverData?.status === 'published') {
+            statusContent = <><FaCheckCircle /> This waiver scheme is currently published.</>;
+            statusVariant = 'success-subtle';
+        } else if (currentWaiverData?.status === 'archived') {
+            statusContent = <><FaExclamationTriangle /> This waiver scheme is archived.</>;
+            statusVariant = 'secondary';
+        } else {
+            statusContent = <>Editing Waiver Scheme Draft (ID: {currentWaiverData?._id})</>;
+            statusVariant = 'secondary';
+        }
     }
 
     return (
@@ -205,21 +190,14 @@ const WaiverBuilderContainer = () => {
                 </Col>
             </Row>
 
-             <Alert variant={statusVariant} className={`d-flex align-items-center shadow-sm mb-4 status-alert ${error || (loansLoadingError && mode === 'create') ? 'alert-dismissible' : ''}`}>
+             <Alert variant={statusVariant} className={`d-flex align-items-center shadow-sm mb-4 status-alert ${error ? 'alert-dismissible' : ''}`}>
                 {statusContent}
-                 {(error || (loansLoadingError && mode === 'create')) && <Button variant="close" onClick={() => {
-                    if (error) setViewState(prev => ({...prev, error: null}));
-                    if (loansLoadingError) setLoansLoadingError(null); // Allow dismissing loan loading error
-                 }} aria-label="Close"></Button>}
+                 {error && <Button variant="close" onClick={() => setViewState(prev => ({...prev, error: null}))} aria-label="Close"></Button>}
             </Alert>
 
-            {/* Show loading spinner if initial waiver data is loading in edit mode, OR if loans are still loading in create mode */}
-            {isLoading && (mode === 'edit' || (mode === 'create' && availableLoans.length === 0 && !loansLoadingError)) && (
-                <LiquidLoader/>
-            )}
+            {isLoading && <LiquidLoader/>}
 
-            {/* Render FormBuilder only when not initial loading OR if loans failed to load (still show form) */}
-            {(!isLoading || (mode === 'create' && (availableLoans.length > 0 || loansLoadingError))) && (
+            {!isLoading && (
                  <Card className="shadow-sm">
                     <Card.Header className="bg-light">
                         <h5 className="mb-0 d-flex align-items-center text-dark">

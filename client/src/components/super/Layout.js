@@ -1,5 +1,5 @@
 import { Outlet } from 'react-router-dom';
-import CustomNavbar from '../admin/CustomNavbar';
+import CustomNavbar from '../CustomNavbar';
 
 const Layout = () => {
   return (

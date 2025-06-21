@@ -3,12 +3,12 @@ import Login from "./components/auth/Login";
 import Register from "./components/auth/Register";
 import PrivateRoute from "./PrivateRoute";
 import ApplicationForm from "./components/applicant/applications/ApplicationForm"; // Corrected path based on your image
-import FormBuilderContainer from "./components/admin/FormBuilderContainer";
+import FormBuilderContainer from "./components/admin/loan/FormBuilderContainer";
 import PageNotFound from "./components/super/PageNotFound";
 import ApplicationsPage from "./components/admin/ApplicationsPage";
 import AvailableLoans from "./components/applicant/applications/AvailableLoans";
 import SubmissionDetails from "./components/admin/SubmissionDetails";
-import LoanListPage from "./components/admin/LoanListPage";
+import LoanListPage from "./components/admin/loan/LoanListPage";
 import Profile from "./components/Profile";
 import AdminDashboard from "./components/admin/AdminDashboard";
 import UserDashboard from "./components/applicant/UserDashboard";
@@ -26,6 +26,7 @@ import AdminRepaymentsDashboard from "./components/admin/repayments/AdminRepayme
 import AdminRepaymentDetailPage from "./components/admin/repayments/AdminRepaymentDetailPage";
 import WaiverSubmissionDetailsPage from "./components/admin/waivering/WaiverSubmissionDetailsPage";
 import AdminWaiverSubmissionsPage from "./components/admin/waivering/AdminWaiverSubmissionsPage";
+import WaiverSchemeListPage from "./components/admin/waivering/WaiverSchemeListPage";
 
 function App() {
   return (
@@ -35,8 +36,10 @@ function App() {
         <Route path="/console" element={<PrivateRoute role={"admin"}/>}>
           <Route path="" element={<AdminDashboard />} />
           <Route path="applications" element={<ApplicationsPage />} />
-          <Route path="applications/:id" element={<SubmissionDetails />} />
+          <Route path="application/:id" element={<SubmissionDetails />} />
           <Route path="loans" element={<LoanListPage />} />
+          <Route path="waiver-schemes" element={<WaiverSchemeListPage />} />
+          <Route path="waiver-schemes/:waiverId" element={<WaiverBuilderContainer />} />
           <Route path="form-builder" element={<FormBuilderContainer />} />
           <Route path="waiver-builder" element={<WaiverBuilderContainer />} />
           <Route path="waiver-builder/:waiverId" element={<WaiverBuilderContainer />} />

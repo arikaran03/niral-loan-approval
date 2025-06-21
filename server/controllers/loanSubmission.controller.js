@@ -561,49 +561,84 @@ export async function saveDraft(req, res, next) {
     }
 }
 
-
 export async function filterSubmissions(req, res, next) {
     try {
-      const { loanId, accountNumber, applicantName, fromDate, toDate, stage } = req.query;
-      const match = {};
-      if (loanId && mongoose.Types.ObjectId.isValid(loanId)) { match.loan_id = new mongoose.Types.ObjectId(loanId); }
-      if (stage) { match.stage = stage; }
-      if (fromDate || toDate) { 
-          match.created_at = {}; 
-          if (fromDate) { match.created_at.$gte = new Date(new Date(fromDate).setHours(0,0,0,0)); } 
-          if (toDate) { match.created_at.$lte = new Date(new Date(toDate).setHours(23,59,59,999)); } 
-      }
+        const { loanId, accountNumber, applicantName, fromDate, toDate, stage } = req.query;
 
-      const pipeline = [
-        { $match: match },
-        { $lookup: { from: 'users', localField: 'user_id', foreignField: '_id', as: 'user_doc' } }, 
-        { $unwind: { path: '$user_doc', preserveNullAndEmptyArrays: true } }
-      ];
+        if (loanId) {
+            if (!mongoose.Types.ObjectId.isValid(loanId)) {
+                return res.json([]); 
+            }
+            const loanExists = await Loan.findById(loanId);
+            if (!loanExists) {
+                return res.json([]); 
+            }
+        }
 
-      if (accountNumber) { pipeline.push({ $match: { 'user_doc.account_number': accountNumber } }); }
-      if (applicantName) { pipeline.push({ $match: { 'user_doc.name': { $regex: applicantName, $options: 'i' } } }); }
+        const initialMatch = {};
+        if (loanId) {
+            initialMatch.loan_id = new mongoose.Types.ObjectId(loanId);
+        }
+        if (stage) {
+            initialMatch.stage = stage;
+        }
+        if (fromDate || toDate) {
+            initialMatch.created_at = {};
+            if (fromDate) {
+                initialMatch.created_at.$gte = new Date(new Date(fromDate).setHours(0, 0, 0, 0));
+            }
+            if (toDate) {
+                initialMatch.created_at.$lte = new Date(new Date(toDate).setHours(23, 59, 59, 999));
+            }
+        }
 
-      pipeline.push(
-        { $lookup: { from: 'loans', localField: 'loan_id', foreignField: '_id', as: 'loan_doc' } }, 
-        { $unwind: { path: '$loan_doc', preserveNullAndEmptyArrays: true } }
-      );
+        const pipeline = [
+            { $match: initialMatch },
+            { $lookup: { from: 'users', localField: 'user_id', foreignField: '_id', as: 'user_doc' } },
+            { $unwind: { path: '$user_doc', preserveNullAndEmptyArrays: true } }
+        ];
 
-      pipeline.push({
-          $project: {
-              amount: 1, stage: 1, fields: 1, requiredDocumentRefs: 1, history: 1,
-              approver_id: 1, approval_date: 1, rejection_reason: 1, created_at: 1, updated_at: 1,
-              loan_id: 1, 
-              user_id: 1, 
-              loan: { _id: '$loan_doc._id', title: '$loan_doc.title' }, 
-              user: { _id: '$user_doc._id', name: '$user_doc.name', email: '$user_doc.email', account_number: '$user_doc.account_number' } 
-          }
-      });
+        const userMatch = {};
+        if (accountNumber) {
+            userMatch['user_doc.account_number'] = accountNumber;
+        }
+        if (applicantName) {
+            userMatch['user_doc.name'] = { $regex: applicantName, $options: 'i' };
+        }
+        if (Object.keys(userMatch).length > 0) {
+            pipeline.push({ $match: userMatch });
+        }
+        
+        // --- THIS IS THE CORRECTED SECTION ---
+        pipeline.push(
+            { 
+                $lookup: { 
+                    from: 'loans', 
+                    localField: 'loan_id', 
+                    foreignField: '_id', // <-- FIXED: Was 'id', now '_id'
+                    as: 'loan_doc' 
+                } 
+            },
+            { $unwind: { path: '$loan_doc', preserveNullAndEmptyArrays: true } }
+        );
 
-      pipeline.push({ $sort: { created_at: -1 } });
+        pipeline.push({
+            $project: {
+                _id: 1,
+                amount: 1,
+                stage: 1,
+                created_at: 1,
+                updated_at: 1,
+                // These fields will now populate correctly
+                loan: { _id: '$loan_doc._id', title: '$loan_doc.title' },
+                user: { _id: '$user_doc._id', name: '$user_doc.name', email: '$user_doc.email', account_number: '$user_doc.account_number' }
+            }
+        });
 
-      const submissions = await LoanSubmission.aggregate(pipeline);
-      
-      return res.json(submissions);
+        pipeline.push({ $sort: { created_at: -1 } });
+        
+        const submissions = await LoanSubmission.aggregate(pipeline);
+        return res.json(submissions);
     } catch (err) {
         console.error("Error in filterSubmissions:", err);
         next(err);

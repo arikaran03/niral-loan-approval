@@ -1,23 +1,21 @@
 // src/pages/SubmissionDetails.jsx (or appropriate path)
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { axiosInstance } from '../../config';
 import {
   Container, Card, Row, Col, Table, Image, Button, Spinner, Alert, Badge, ListGroup, ButtonGroup, Modal, Form
 } from 'react-bootstrap';
 import {
-  FaExclamationTriangle, FaSave, FaCloudUploadAlt, FaTrash, FaPlus, FaEdit, FaListOl, FaFileMedicalAlt,
-  FaRegSave, FaFileSignature, FaFileUpload, FaTimes, FaHourglassStart, FaQuestionCircle,
-  FaShieldAlt, FaInfoCircle, FaAddressCard, FaIdBadge, FaPaperclip, FaPercentage, FaCalendarAlt,
-  FaDollarSign, FaCheckCircle, FaUser, FaHashtag, FaHistory
+  FaInfoCircle, FaAddressCard, FaIdBadge, FaPaperclip, FaPercentage, FaCalendarAlt,
+  FaDollarSign, FaCheckCircle, FaHistory
 } from 'react-icons/fa';
 import {
-  ArrowLeft, FileText, XCircle, Check, AlertTriangle as LucideAlertTriangle, // Aliased
+  ArrowLeft, FileText, XCircle, AlertTriangle as LucideAlertTriangle,
   Clock, User as UserIcon, Hash as HashIcon, DollarSign as DollarSignIcon, CalendarDays,
   RotateCcw, Image as ImageIcon, Send, Mail, UserCheck, BarChart3, Landmark,
-  Download as DownloadIcon, FileWarning, Hourglass
+  Download as DownloadIcon
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format, parseISO, isValid as isValidDate } from 'date-fns';

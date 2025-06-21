@@ -2,23 +2,23 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom"; // Import useLocation
 import { Navbar, Container, Nav, Dropdown, Spinner } from "react-bootstrap";
+
 import {
   FaUserCircle,
   FaSignOutAlt,
-  FaFolderOpen,
-  FaPlusCircle,
-  FaPaperPlane,
-  FaTachometerAlt,
-  FaCreditCard,
-  FaWpforms,
-  FaPercentage,
-  FaClipboardList,
-  FaHandHoldingUsd
+  FaFileSignature,
+  FaChartLine,
+  FaFileInvoice,
+  FaFileAlt,
+  FaMoneyBillAlt,
+  FaListAlt,
+  FaMoneyCheckAlt
 } from "react-icons/fa";
-import { BANK_NAME } from "../../config";
-import logo from "../../assets/logo.png";
-import { axiosInstance } from "../../config";
-import "./CustomNavbar.css"; // Assuming you have this CSS file
+import { BANK_NAME } from "../config";
+import logo from "../assets/logo.png"; // Adjust the path to your logo
+import { axiosInstance } from "../config";
+import "./CustomNavbar.css";
+
 
 // Key for storing user data in localStorage
 const USER_CACHE_KEY = "userData";
@@ -167,7 +167,7 @@ export default function CustomNavbar() {
                   className="nav-link-item"
                   active={currentPath === "/console"}
                 >
-                  <FaTachometerAlt className="nav-icon" /> Dashboard
+                  <FaChartLine className="nav-icon" /> Dashboard
                 </Nav.Link>
                 <Nav.Link
                   as={Link}
@@ -175,7 +175,15 @@ export default function CustomNavbar() {
                   className="nav-link-item"
                   active={currentPath.startsWith("/console/applications")}
                 >
-                  <FaPaperPlane className="nav-icon" /> Applications
+                  <FaFileInvoice className="nav-icon" /> Loan Requests
+                </Nav.Link>
+                <Nav.Link
+                  as={Link}
+                  to="/console/waiver-submissions"
+                  className="nav-link-item"
+                  active={currentPath.startsWith("/console/waiver-submissions")}
+                >
+                  <FaFileAlt className="nav-icon" /> Waiver Requests
                 </Nav.Link>
                 <Nav.Link
                   as={Link}
@@ -183,62 +191,45 @@ export default function CustomNavbar() {
                   className="nav-link-item"
                   active={currentPath.startsWith("/console/loans")}
                 >
-                  <FaFolderOpen className="nav-icon" /> Loan Schemes
+                  <FaMoneyBillAlt className="nav-icon" /> Loan Schemes
                 </Nav.Link>
-                {/* /* Admin Repayments Link */}
-                        <Nav.Link
-                          as={Link}
-                          to="/console/repayments"
-                          className="nav-link-item"
-                          active={currentPath.startsWith("/console/repayments")}
-                        >
-                          <FaCreditCard className="nav-icon" /> Repayments
-                        </Nav.Link>
-                        <Nav.Link
-                          as={Link}
-                          to="/console/form-builder"
-                          className="nav-link-item"
-                          active={currentPath.startsWith("/console/form-builder")}
-                        >
-                          <FaWpforms className="nav-icon" /> Create Loan
-                        </Nav.Link>
-                        <Nav.Link
-                          as={Link}
-                          to="/console/waiver-builder"
-                          className="nav-link-item"
-                          active={currentPath.startsWith("/console/waiver-builder")}
-                        >
-                          <FaPercentage className="nav-icon" /> Create Waiver Scheme
-                        </Nav.Link>
-                        <Nav.Link
-                          as={Link}
-                          to="/console/waiver-submissions"
-                          className="nav-link-item"
-                          active={currentPath.startsWith("/console/waiver-submissions")}
-                        >
-                          <FaClipboardList className="nav-icon" /> Waiver Submissions
-                        </Nav.Link>
-                        </>
-                      ) : (
-                        <>
-                        <Nav.Link
-                          as={Link}
-                          to="/"
-                          className="nav-link-item"
-                          active={currentPath === "/"}
-                        >
-                          <FaHandHoldingUsd className="nav-icon" /> Apply for Loan
-                        </Nav.Link>
-                        <Nav.Link
-                          as={Link}
-                          to="/dashboard"
-                          className="nav-link-item"
-                          active={
-                          currentPath === "/dashboard" ||
-                          currentPath.startsWith("/applications/")
-                          } // Also active for viewing full application details
+                <Nav.Link
+                  as={Link}
+                  to="/console/waiver-schemes"
+                  className="nav-link-item"
+                  active={currentPath.startsWith("/console/waiver-schemes")}
                 >
-                  <FaTachometerAlt className="nav-icon" /> My Dashboard
+                  <FaListAlt className="nav-icon" /> Waiver Schemes
+                </Nav.Link>
+                <Nav.Link
+                  as={Link}
+                  to="/console/repayments"
+                  className="nav-link-item"
+                  active={currentPath.startsWith("/console/repayments")}
+                >
+                  <FaMoneyCheckAlt className="nav-icon" /> Repayments
+                </Nav.Link>
+              </>
+            ) : (
+              <>
+                <Nav.Link
+                  as={Link}
+                  to="/"
+                  className="nav-link-item"
+                  active={currentPath === "/"}
+                >
+                  <FaFileSignature className="nav-icon" /> Apply for Loan
+                </Nav.Link>
+                <Nav.Link
+                  as={Link}
+                  to="/dashboard"
+                  className="nav-link-item"
+                  active={
+                    currentPath === "/dashboard" ||
+                    currentPath.startsWith("/applications/")
+                  } // Also active for viewing full application details
+                >
+                  <FaChartLine className="nav-icon" /> My Dashboard
                 </Nav.Link>
                 {/* Applicant Repayments Link */}
                 <Nav.Link
@@ -247,7 +238,7 @@ export default function CustomNavbar() {
                   className="nav-link-item"
                   active={currentPath.startsWith("/repayments")}
                 >
-                  <FaCreditCard className="nav-icon" /> My Repayments
+                  <FaMoneyCheckAlt className="nav-icon" /> My Repayments
                 </Nav.Link>
               </>
             )}

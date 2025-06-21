@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Container,
@@ -20,11 +20,9 @@ import {
   ArrowLeft,
   Calendar,
   CheckCircle,
-  XCircle,
   Info,
   FileText,
   MessageSquare,
-  ShieldCheck,
   Hourglass,
   AlertTriangle,
   Send,
@@ -152,7 +150,7 @@ export default function AdminRepaymentDetailPage() {
 
   return (
     <Container fluid="lg" className="my-4">
-      <Button variant="link" onClick={() => navigate('/admin/repayments/dashboard')} className="mb-3 text-decoration-none ps-0 d-inline-flex align-items-center">
+      <Button variant="link" onClick={() => navigate('/console/repayments')} className="mb-3 text-decoration-none ps-0 d-inline-flex align-items-center">
         <ArrowLeft size={18} className="me-1" /> Back to Dashboard
       </Button>
 

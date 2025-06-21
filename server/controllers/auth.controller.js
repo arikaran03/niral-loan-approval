@@ -165,7 +165,7 @@ export async function login(req, res) {
         return res.status(400).json({ error: 'Invalid credentials.' });
     }
     
-    const payload = { _id: user._id, type: user.type, ...payloadBase };
+    const payload = { _id: user._id, type: user.type, ...payloadBase, name: user.name };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1d' });
 
     return res.status(200).json({

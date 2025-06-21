@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { axiosInstance } from '../../../config.js'
@@ -6,11 +6,11 @@ import {
   Container, Card, Row, Col, Table, Image, Button, Spinner, Alert, Badge, ListGroup, ButtonGroup, Modal, Form
 } from 'react-bootstrap';
 import {
-  ArrowLeft, FileText, XCircle, CheckCircle as CheckCircleIcon, Clock, User as UserIcon, Hash, DollarSign,
-  CalendarDays, RotateCcw, Download as DownloadIcon, ShieldCheck, Mail, Phone, Percent, Edit, Info, AlertTriangle, LucideAlertTriangle
+  ArrowLeft, FileText, XCircle, CheckCircle as CheckCircleIcon, Clock, User as UserIcon, Hash, 
+  RotateCcw, ShieldCheck, Mail, Phone, Percent, Edit, Info, AlertTriangle, LucideAlertTriangle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { format, parseISO, isValid as isValidDate, formatDistanceToNow } from 'date-fns';
+import { parseISO, formatDistanceToNow } from 'date-fns';
 import LiquidLoader from '../../super/LiquidLoader';
 
 // --- CSS for Timeline ---
