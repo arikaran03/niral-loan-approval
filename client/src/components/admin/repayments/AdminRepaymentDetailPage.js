@@ -110,7 +110,7 @@ export default function AdminRepaymentDetailPage() {
               sendEmail: newLog.sendEmail,
               recipient: repaymentDetails?.user_id?.email,
           };
-          const response = await axiosInstance.post(`/api/repayments/${repaymentId}/communication`, logData);
+          const response = await axiosInstance.post(`/api/repayments/${repaymentId}/communication-log`, logData);
           setRepaymentDetails(prev => ({ ...prev, communication_log: response.data.data }));
           setLogSuccess("Message sent and logged successfully!");
           setNewLog({ subject: '', summary: '', sendEmail: true });

@@ -462,6 +462,7 @@ const DynamicDocumentSubmissionForm = () => {
         return (
           <Form.Control
             type={getHtmlInputType(field.type)}
+            onWheel={(e) => e.target.blur()}
             name={fieldKey}
             value={value || ""}
             onChange={(e) => handleInputChange(fieldKey, e)}

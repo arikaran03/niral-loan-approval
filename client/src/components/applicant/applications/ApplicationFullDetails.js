@@ -219,7 +219,7 @@ export default function ApplicationFullDetails() {
             <Col xs="auto"> <Button variant="outline-secondary" size="sm" onClick={() => navigate(-1)} className="back-button d-inline-flex align-items-center"> <ArrowLeft size={16} className="me-1" /> Back </Button> </Col>
             <Col>
                 <h1 className="h4 mb-0 text-dark fw-bold"> Application Details </h1>
-                {loan?.title && <span className="text-muted d-block small">For Loan: {loan.title} (ID: {submission._id})</span>}
+                {loan?.title && <span className="text-muted d-block small">For Loan: {loan.title} (ID: {loan?._id || "Key not found"})</span>}
             </Col>
              {error && submission && ( <Col xs={12} className="mt-2"> <Alert variant="danger" size="sm" onClose={() => setError(null)} dismissible className="action-error-alert"> {error} </Alert> </Col> )}
         </Row>

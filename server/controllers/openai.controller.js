@@ -169,7 +169,7 @@ Analyze the attached image and perform the following steps according to the syst
 ${fieldDescriptions}
 
 Strictly return ONLY the JSON object in the specified format: { "entities": [{ "key": "key1", "value": "value1" }, ...], "doc_name": "detected_type" }
-If you cannot find a value for a key, use an empty string "" or null for its value.
+If you cannot find a value for a key, don't return the key at all, skip that key.
 If you are unsure about the document type, use "other" as the value for "doc_name".
 `;
 

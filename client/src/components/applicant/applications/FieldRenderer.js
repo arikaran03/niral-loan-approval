@@ -135,7 +135,7 @@ const FieldRenderer = ({
                 ) : type === 'select' || type === 'multiselect' ? (
                     <Form.Select value={value || (type === 'multiselect' ? [] : '')} onChange={handleChange} required={required} disabled={isDisabled} className={isReadOnlyVisually ? 'is-autofilled' : ''} isInvalid={showValidationErrors && !!error} multiple={type === 'multiselect'}>
                         <option value="">-- Select --</option>
-                        {(options || []).map((opt, i) => (<option key={i} value={typeof opt === 'object' ? opt.value : opt}>{typeof opt === 'object' ? opt.label : opt}</option>))}
+                        {(options[0].split(",") || []).map((opt, i) => (<option key={i} value={typeof opt === 'object' ? opt.value : opt}>{typeof opt === 'object' ? opt.label : opt}</option>))}
                     </Form.Select>
                 ) : type === 'checkbox' ? (
                      <Form.Check className='mt-2' type="checkbox" label={field_prompt || 'Confirm'} checked={!!value} onChange={handleChange} disabled={isDisabled} isInvalid={showValidationErrors && !!error}/>
@@ -147,6 +147,7 @@ const FieldRenderer = ({
                 ) : (
                     <Form.Control
                         type={type === 'datetime' ? 'datetime-local' : type === 'time' ? 'time' : type === 'date' ? 'date' : type === 'number' ? 'number' : 'text'}
+                        onWheel={(e) => e.target.blur()}
                         value={value || ''} onChange={handleChange} required={required} disabled={isDisabled}
                         min={type === 'number' ? min_value : (type === 'date' ? formatDateToYYYYMMDDHelper(min_value) : (type === 'datetime-local' ? min_value : undefined) )} 
                         max={type === 'number' ? max_value : (type === 'date' ? formatDateToYYYYMMDDHelper(max_value) : (type === 'datetime-local' ? max_value : undefined) )}

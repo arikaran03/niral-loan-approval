@@ -774,7 +774,14 @@ const loanRepaymentController = {
       if (new Date() < lockInEndDate) {
         return res.status(400).json({
           success: false,
-          message: `Foreclosure not allowed during lock-in period. Available after ${lockInEndDate.toLocaleDateString()}.`,
+          message: `Foreclosure not allowed during lock-in period. Available after ${lockInEndDate.toLocaleDateString(
+            "en-GB",
+            {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+            }
+          )}.`,
         });
       }
       const outstandingPrincipal = repayment.current_outstanding_principal;

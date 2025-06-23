@@ -166,37 +166,6 @@ LoanSubmissionSchema.pre('save', async function(next) {
             return next(new Error('Processed PAN data is missing or empty. Ensure PAN document was verified.'));
         }
 
-        // 4. Check other required documents (as defined in the Loan schema, excluding Aadhaar/PAN)
-        const otherRequiredDocDefinitions = (loan.required_documents || []).filter(
-            docDef => docDef.name !== 'aadhaar_card' && docDef.name !== 'pan_card'
-        );
-
-        if (otherRequiredDocDefinitions.length > 0) {
-            const requiredOtherDocTypeKeys = otherRequiredDocDefinitions.map(doc => doc.name);
-            const submittedOtherDocTypeKeys = this.requiredDocumentRefs
-                .filter(ref => ref.documentTypeKey !== 'aadhaar_card' && ref.documentTypeKey !== 'pan_card')
-                .map(ref => ref.documentTypeKey);
-            
-            const missingDocs = requiredOtherDocTypeKeys.filter(name => !submittedOtherDocTypeKeys.includes(name));
-
-            if (missingDocs.length > 0) {
-                return next(new Error(`Missing other required document uploads: ${missingDocs.join(', ')}`));
-            }
-        }
-
-        // 5. Check face verification status if Aadhaar definition implies a photo for verification
-        // This assumes that if an Aadhaar definition exists and has a photo field, face verification is triggered.
-        // The frontend controls `showFaceVerificationModule` based on `aadhaarPhotoIdForVerification`.
-        // If `aadhaarPhotoIdForVerification` was set, then `isFaceVerified` must be true.
-        let aadhaarRequiresFaceVerification = false;
-        if (loan.aadhaar_card_definition && loan.aadhaar_card_definition.fields) {
-            aadhaarRequiresFaceVerification = loan.aadhaar_card_definition.fields.some(f => f.key === 'photo'); // Or however you identify the photo field
-        }
-        
-        if (aadhaarRequiresFaceVerification && !this.isFaceVerified) {
-             return next(new Error('Face verification is mandatory and not completed.'));
-        }
-
         // 6. Annexure: The frontend logic primarily handles if annexure is needed.
         // If `annexureDocumentRef` is present, it implies the frontend determined it was necessary.
         // No specific validation here unless you want to cross-check against a flag indicating mismatches were indeed present.

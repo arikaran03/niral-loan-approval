@@ -279,10 +279,9 @@ const LoanRepaymentSchema = new mongoose.Schema({
   
   // --- NEW: Information about any waiver applied to this loan repayment ---
   applied_waiver_info: {
-    type: AppliedWaiverInfoSchema, // Using the new subdocument schema
-    default: null, // Null if no waiver has been applied
-    required: false,
-    comment: "Details of the waiver scheme application that was approved and applied to this loan."
+    type: [AppliedWaiverInfoSchema],
+    default: null,
+    comment: "Details of the waiver schemes that were approved and applied to this loan."
   },
 
   // --- Communication & Notes ---

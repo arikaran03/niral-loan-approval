@@ -4,6 +4,7 @@ import GovDocumentDefinitionModel from "../database/models/GovDocumentDefinition
 import mongoose, { get } from "mongoose";
 import LoanSubmissionModel from "../database/models/LoanSubmissionModel.js";
 import WaiverSubmissionModel from "../database/models/WaiverSubmissionModel.js";
+import LoanModel from "../database/models/LoanModel.js";
 // import { randomUUID } from 'crypto'; // Not used if field_id is handled by frontend
 
 /**
@@ -42,6 +43,10 @@ export default {
       //   field_id: field.field_id || randomUUID(), // Ensure field_id is present
       // }));
 
+      await LoanModel.findByIdAndUpdate(waiverSchemeData.target_loan_id, {
+        $set: { applicable_waiver_scheme_id: waiverSchemeData._id },
+      });
+
       const waiverScheme = await WaiverScheme.create(waiverSchemeData);
       return res.status(201).json(waiverScheme);
     } catch (err) {
@@ -60,13 +65,13 @@ export default {
       // TODO: Implement pagination and filtering based on req.query if needed
       // const { status, page = 1, limit = 10 } = req.query;
       // const query = status ? { status } : {};
-      
+
       // Use .populate() to include the full details of the linked loan product
       const waiverSchemes = await WaiverScheme.find()
         .sort({ created_at: -1 }) // Sort by newest first
-        .populate('target_loan_id') // This will replace the loan_id with the full loan document
+        .populate("target_loan_id") // This will replace the loan_id with the full loan document
         .lean();
-        
+
       return res.json(waiverSchemes);
     } catch (err) {
       console.error("Error listing waiver schemes:", err);
@@ -101,12 +106,10 @@ export default {
         }).lean();
 
         if (!getExistigLoanSubmission) {
-          return res
-            .status(404)
-            .json({
-              error:
-                "You don't have access to apply for waivering without any existing loan pending repayments",
-            });
+          return res.status(404).json({
+            error:
+              "You don't have access to apply for waivering without any existing loan pending repayments",
+          });
         }
 
         const isAlreadyWaived = await WaiverSubmissionModel.findOne({
@@ -116,11 +119,9 @@ export default {
         }).lean();
 
         if (isAlreadyWaived) {
-          return res
-            .status(400)
-            .json({
-              error: "You have already applied for this waiver scheme.",
-            });
+          return res.status(400).json({
+            error: "You have already applied for this waiver scheme.",
+          });
         }
       }
 
@@ -220,11 +221,9 @@ export default {
       return res.json(waiverScheme);
     } catch (err) {
       console.error(`Error fetching waiver scheme by ID ${id}:`, err);
-      return res
-        .status(500)
-        .json({
-          error: "An error occurred while fetching the waiver scheme details.",
-        });
+      return res.status(500).json({
+        error: "An error occurred while fetching the waiver scheme details.",
+      });
     }
   },
 
@@ -260,6 +259,12 @@ export default {
       if (!updatedWaiverScheme) {
         return res.status(404).json({ error: "Waiver Scheme not found." });
       }
+
+      console.log("Loan ID: ",updatedWaiverScheme.target_loan_id);
+
+      await LoanModel.findByIdAndUpdate(updatedWaiverScheme.target_loan_id, {
+        $set: { applicable_waiver_scheme_id: updatedWaiverScheme._id },
+      });
 
       // If frontend expects document_definitions on update response,
       // you might need to re-fetch and attach them similar to getById.

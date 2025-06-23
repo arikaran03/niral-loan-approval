@@ -13,6 +13,8 @@ import {
   Alert,
   ListGroup,
   Badge,
+  InputGroup,
+  Modal,
 } from "react-bootstrap";
 import { axiosInstance } from "../../../config"; // Adjust path as per your project structure
 import {
@@ -22,13 +24,12 @@ import {
   FaExclamationTriangle,
   FaCloudUploadAlt,
   FaTrash,
-  FaListOl,
   FaFileMedicalAlt,
   FaRegSave,
   FaShieldAlt,
   FaDownload,
   FaPaperclip,
-  FaHandHoldingUsd, // Icon for waiver
+  FaHandHoldingUsd,
   FaFileUpload
 } from "react-icons/fa";
 import {
@@ -75,13 +76,13 @@ export default function WaiverApplicationForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draftSaveStatus, setDraftSaveStatus] = useState({ saved: false, time: null });
   const [submissionStatus, setSubmissionStatus] = useState("filling");
-  const [apiError, setApiError] = useState("");
-  const [autoFillError, setAutoFillError] = useState("");
   const [submissionId, setSubmissionId] = useState(null);
   const [docValidationStatus, setDocValidationStatus] = useState({});
   const [isFormValidForSubmit, setIsFormValidForSubmit] = useState(false);
   const [autoFilledFields, setAutoFilledFields] = useState({});
   const [showValidationErrors, setShowValidationErrors] = useState(false);
+  const [errorModal, setErrorModal] = useState({ show: false, message: "" });
+  const [autoFillError, setAutoFillError] = useState("");
 
   // KYC States (Face Verification, OTP, Annexure) - largely reusable
   const [aadhaarPhotoIdForVerification, setAadhaarPhotoIdForVerification] = useState(null);
@@ -102,6 +103,10 @@ export default function WaiverApplicationForm() {
 
 
   const formRef = useRef(null);
+
+  const isExtracting = Object.values(docValidationStatus).some(
+    (status) => status.status === "validating"
+  );
 
   const getFieldKeyFromSource = (sourceString) => {
     if (!sourceString) return null;
@@ -158,15 +163,15 @@ export default function WaiverApplicationForm() {
     });
 
     const allDocsForDraft = [...reqDocs];
-    if (!reqDocs.find((d) => d.name === "aadhaar_card" || d.schema_id === "aadhaar_card")) {
+    if (!reqDocs.find((d) => d.schema_id === "aadhaar_card")) {
         allDocsForDraft.push({ name: "Aadhaar Card", schema_id: "aadhaar_card" });
     }
-    if (!reqDocs.find((d) => d.name === "pan_card" || d.schema_id === "pan_card")) {
+    if (!reqDocs.find((d) => d.schema_id === "pan_card")) {
         allDocsForDraft.push({ name: "PAN Card", schema_id: "pan_card" });
     }
 
     allDocsForDraft.forEach((doc) => {
-      const docKey = doc.schema_id || doc.name;
+      const docKey = doc.schema_id;
       const draftRefKey = `reqDoc_${docKey}`;
       if (draftData?.requiredDocumentRefs?.find(ref => ref.documentTypeKey === docKey)?.fileRef) {
         initialExistingRefs[draftRefKey] = draftData.requiredDocumentRefs.find(ref => ref.documentTypeKey === docKey).fileRef;
@@ -185,7 +190,7 @@ export default function WaiverApplicationForm() {
     setCustomFieldFiles({});
     setExistingFileRefs(initialExistingRefs);
     setFormErrors({});
-    setApiError("");
+    setErrorModal({ show: false, message: "" });
     setAutoFillError("");
     setSubmissionStatus("filling");
     setSubmissionId(null);
@@ -210,7 +215,7 @@ export default function WaiverApplicationForm() {
 
   useEffect(() => {
     if (!waiverSchemeId) {
-      setApiError("Waiver Scheme ID is missing.");
+      setErrorModal({show: true, message: "Waiver Scheme ID is missing."});
       setLoading(false);
       return;
     }
@@ -242,7 +247,7 @@ export default function WaiverApplicationForm() {
       } catch (err) {
         console.error("Error loading waiver scheme definition:", err);
         if (isMounted) {
-          setApiError(err.response?.data?.error || `Failed to load waiver scheme details (ID: ${waiverSchemeId}).`);
+          setErrorModal({show: true, message: err.response?.data?.message || `Failed to load waiver scheme details (ID: ${waiverSchemeId}).`});
           setWaiverSchemeData(null);
         }
       } finally {
@@ -257,8 +262,7 @@ export default function WaiverApplicationForm() {
   const handleInputChange = useCallback((fieldId, value) => {
     setFormData(prev => ({ ...prev, [fieldId]: value }));
     setAutoFilledFields(prev => {
-        if (!prev[fieldId]) return prev;
-        if (String(prev[fieldId].value).toLowerCase() !== String(value).toLowerCase()) {
+        if (prev[fieldId]) {
             const newState = {...prev}; delete newState[fieldId]; return newState;
         }
         return prev;
@@ -266,8 +270,8 @@ export default function WaiverApplicationForm() {
     if (showValidationErrors) {
         setFormErrors(prev => { if (!prev[fieldId]) return prev; const n = {...prev}; delete n[fieldId]; return n; });
     }
-    if(apiError) setApiError(""); if(autoFillError) setAutoFillError("");
-  }, [apiError, autoFillError, showValidationErrors]);
+    if(autoFillError) setAutoFillError("");
+  }, [autoFillError, showValidationErrors]);
 
   const handleCustomFieldFileChange = useCallback((fieldId, file) => {
       setCustomFieldFiles(prev => { const n = {...prev}; if (file) n[fieldId] = file; else delete n[fieldId]; return n; });
@@ -308,8 +312,7 @@ export default function WaiverApplicationForm() {
 
   const runFullValidation = useCallback((showErrors = false) => {
     const currentErrors = {};
-    let hasHardErrors = false; // Tracks errors that cannot be resolved by an annexure
-    let hasNonAnnexureEligibleDiscrepancies = false; // Tracks if any doc has errors not fixable by annexure
+    let hasHardErrors = false;
     let tempAnnexureEligibleMismatchesLocal = [];
 
     if (!waiverSchemeData) {
@@ -317,116 +320,82 @@ export default function WaiverApplicationForm() {
       return false;
     }
 
-    // Validate custom fields from the waiver scheme
     (waiverSchemeData.fields || []).forEach(f => {
       const error = validateField(f, formData[f.field_id]);
       if (error) {
         currentErrors[f.field_id] = error;
-        hasHardErrors = true; // Custom field errors are hard errors
+        hasHardErrors = true;
       }
-    });
-
-    // Document validation (Aadhaar, PAN, and other scheme-specific required docs)
-    const schemeReqDocs = waiverSchemeData.required_documents || [];
-    const allDocsForValidation = [
-        { key: 'aadhaar_card', def: waiverSchemeData.aadhaar_card_definition, isMandatorySystemLevel: true, schema_id: 'aadhaar_card' },
-        { key: 'pan_card', def: waiverSchemeData.pan_card_definition, isMandatorySystemLevel: true, schema_id: 'pan_card' },
-        ...schemeReqDocs.map(doc => ({
-            key: doc.schema_id || doc.name,
-            def: waiverSchemeData.document_definitions?.[doc.schema_id || doc.name],
-            isMandatorySystemLevel: false,
-            schemeReqDocEntry: doc,
-            schema_id: doc.schema_id || doc.name
-        }))
-    ];
-
-    allDocsForValidation.forEach(docInfo => {
-      const docKeyForStatusAndFiles = docInfo.schema_id;
-      if (!docInfo.def && (docInfo.isMandatorySystemLevel || schemeReqDocs.find(rd => (rd.schema_id || rd.name) === docKeyForStatusAndFiles)) ) {
-          currentErrors[`reqDoc_${docKeyForStatusAndFiles}`] = `${docInfo.schemeReqDocEntry?.name || docKeyForStatusAndFiles.replace('_', ' ')} definition is missing.`;
-          hasHardErrors = true;
-          hasNonAnnexureEligibleDiscrepancies = true; // Definition missing is a hard, non-annexure error
-          return;
-      }
-      const docLabel = docInfo.def?.label || docInfo.schemeReqDocEntry?.name || docKeyForStatusAndFiles;
-      const docRefKey = `reqDoc_${docKeyForStatusAndFiles}`;
-      const hasUploadedFile = !!requiredDocFiles[docKeyForStatusAndFiles];
-      const hasExistingFile = !!existingFileRefs[docRefKey];
-      const statusInfo = docValidationStatus[docKeyForStatusAndFiles];
-
-      if (!hasUploadedFile && !hasExistingFile) {
-          currentErrors[docRefKey] = `${docLabel} is required.`;
-          hasHardErrors = true;
-          // Missing document is a hard error, but could be non-annexure related if it's not about name/address.
-          // However, the primary issue is missing doc, not mismatch.
-          // For simplicity, let's assume missing doc itself is a hard error not fixed by annexure.
-          hasNonAnnexureEligibleDiscrepancies = true;
-      } else if (!statusInfo || statusInfo.status !== 'verified') {
-          if (statusInfo?.status === 'error' && statusInfo.mismatches && statusInfo.mismatches.length > 0) {
-              const annexureEligibleForThisDoc = statusInfo.mismatches.filter(mm => ANNEXURE_ELIGIBLE_FIELD_LABELS.includes(mm.fieldLabel));
-              const nonAnnexureEligibleForThisDoc = statusInfo.mismatches.filter(mm => !ANNEXURE_ELIGIBLE_FIELD_LABELS.includes(mm.fieldLabel));
-
-              if (nonAnnexureEligibleForThisDoc.length > 0) {
-                  currentErrors[docRefKey] = `${docLabel} has critical data mismatches or other verification issues: ${nonAnnexureEligibleForThisDoc.map(m=>m.fieldLabel).join(', ')}. Please re-upload or check the document.`;
-                  hasHardErrors = true;
-                  hasNonAnnexureEligibleDiscrepancies = true;
-              } else if (annexureEligibleForThisDoc.length > 0) {
-                  // ALL mismatches for THIS document are annexure-eligible
-                  annexureEligibleForThisDoc.forEach(mm => {
-                      tempAnnexureEligibleMismatchesLocal.push({
-                          docTypeKey: docInfo.schema_id,
-                          fieldLabel: mm.fieldLabel,
-                          extractedValue: mm.actual,
-                          formValue: mm.expected
-                      });
-                  });
-                  currentErrors[docRefKey] = `${docLabel} has Name/Address discrepancies. An annexure document may be required if these cannot be resolved by re-uploading.`;
-                  // Not setting hasHardErrors = true here yet for this specific doc's issue.
-              } else { // Error status, but no mismatches, or mismatches array is empty.
-                  currentErrors[docRefKey] = `${docLabel} requires successful verification. Status: ${statusInfo?.status || 'Pending'}.`;
-                  hasHardErrors = true;
-                  hasNonAnnexureEligibleDiscrepancies = true;
-              }
-          } else if (statusInfo?.status !== 'verified') { // e.g., 'validating', 'pending_verification', or other non-mismatch error
-              currentErrors[docRefKey] = `${docLabel} requires successful verification. Status: ${statusInfo?.status || 'Pending'}.`;
+      if ((f.type === 'image' || f.type === 'document') && f.required) {
+          const hasUploadedFile = !!customFieldFiles[f.field_id];
+          const hasExistingFile = !!existingFileRefs[f.field_id];
+          if (!hasUploadedFile && !hasExistingFile) {
+              currentErrors[f.field_id] = `${f.field_label} is required.`;
               hasHardErrors = true;
-              hasNonAnnexureEligibleDiscrepancies = true;
           }
       }
     });
 
+    const allRequiredDocs = new Set(['aadhaar_card', 'pan_card', ...(waiverSchemeData.required_documents || []).map(d => d.schema_id)]);
+    
+    allRequiredDocs.forEach(docKey => {
+      const docDef = docKey === 'aadhaar_card' ? waiverSchemeData.aadhaar_card_definition : docKey === 'pan_card' ? waiverSchemeData.pan_card_definition : waiverSchemeData.document_definitions?.[docKey];
+      const docLabel = docDef?.label || docKey.replace(/_/g, ' ');
+      const docRefKey = `reqDoc_${docKey}`;
+      const hasUploadedFile = !!requiredDocFiles[docKey];
+      const hasExistingFile = !!existingFileRefs[docRefKey];
+
+      if (!hasUploadedFile && !hasExistingFile) {
+        currentErrors[docRefKey] = `${docLabel} is required.`;
+        hasHardErrors = true;
+      }
+    });
+
+    Object.keys(docValidationStatus).forEach(docKey => {
+      const statusInfo = docValidationStatus[docKey];
+      const docDef = docKey === 'aadhaar_card' ? waiverSchemeData.aadhaar_card_definition : docKey === 'pan_card' ? waiverSchemeData.pan_card_definition : waiverSchemeData.document_definitions?.[docKey];
+      const docLabel = docDef?.label || docKey.replace(/_/g, ' ');
+      const docRefKey = `reqDoc_${docKey}`;
+
+      if (statusInfo?.status === 'extraction_incomplete') {
+        currentErrors[docRefKey] = `Essential information could not be read from ${docLabel}. Please upload a clearer image.`;
+        hasHardErrors = true;
+      } else if (statusInfo?.status === "error") {
+        const allMismatchesAnnexureEligible = statusInfo.mismatches?.every(mm => ANNEXURE_ELIGIBLE_FIELD_LABELS.includes(mm.fieldLabel));
+        if (allMismatchesAnnexureEligible) {
+            statusInfo.mismatches.forEach(mm => {
+                tempAnnexureEligibleMismatchesLocal.push({ docTypeKey: docKey, fieldLabel: mm.fieldLabel, extractedValue: mm.actual, formValue: mm.expected });
+            });
+            currentErrors[docRefKey] = `${docLabel} has Name/Address discrepancies. Annexure may be required.`;
+        } else {
+            currentErrors[docRefKey] = `${docLabel} has critical data mismatches or other issues. Please re-upload or check the document.`;
+            hasHardErrors = true;
+        }
+      } else if (statusInfo?.status !== 'verified') {
+        currentErrors[docRefKey] = `${docLabel} requires successful verification. Status: ${statusInfo?.status || "Pending"}.`;
+        hasHardErrors = true;
+      }
+    });
+    
     setAnnexureEligibleMismatches(tempAnnexureEligibleMismatchesLocal);
-
-    // Determine if annexure upload should be shown
-    const shouldShowAnnexure = tempAnnexureEligibleMismatchesLocal.length > 0 && !hasNonAnnexureEligibleDiscrepancies;
-    setShowAnnexureUpload(shouldShowAnnexure);
-
-    // Initial finalFormValidity based on hard errors found so far
     let finalFormValidity = !hasHardErrors;
 
-    if (shouldShowAnnexure) {
-        if (!(annexureFile || existingAnnexureFileRef)) {
-            currentErrors['annexure'] = "An annexure document is required to resolve the noted name/address discrepancies.";
-            finalFormValidity = false; // If annexure is needed but not provided, form is invalid.
-        } else {
-            // Annexure is provided, and it was the only type of issue.
-            // Clear the specific "Annexure may be required" messages for documents whose errors are covered by the annexure.
-            tempAnnexureEligibleMismatchesLocal.forEach(aem => {
-                const docErrorKey = `reqDoc_${aem.docTypeKey}`;
-                if (currentErrors[docErrorKey]?.includes("An annexure document may be required")) {
-                    delete currentErrors[docErrorKey];
-                }
-            });
-            // If `hasHardErrors` was false (meaning no non-annexure discrepancies),
-            // and annexure is provided, `finalFormValidity` remains true.
-        }
-    } else if (tempAnnexureEligibleMismatchesLocal.length > 0 && hasNonAnnexureEligibleDiscrepancies) {
-        // There are annexure-eligible mismatches, but also other critical errors.
-        // Annexure upload is hidden. The form is already invalid due to `hasHardErrors` being true.
+    if (tempAnnexureEligibleMismatchesLocal.length > 0) {
+      setShowAnnexureUpload(true);
+      if (!(annexureFile || existingAnnexureFileRef)) {
+        currentErrors["annexure"] = "An annexure document is required to resolve the noted name/address discrepancies.";
+        finalFormValidity = false;
+      } else if (finalFormValidity) {
+        tempAnnexureEligibleMismatchesLocal.forEach((aem) => {
+          if (currentErrors[`reqDoc_${aem.docTypeKey}`]?.includes("Annexure may be required")) {
+            delete currentErrors[`reqDoc_${aem.docTypeKey}`];
+          }
+        });
+      }
+    } else {
+      setShowAnnexureUpload(false);
     }
-
-
-    // OTP & Face Verification checks (reusable logic)
+    
     if (isAadhaarFromGovDB && otpVerificationMobileNumber && !isOtpVerified) {
       currentErrors['otp_verification'] = 'Mobile OTP verification for Aadhaar is pending.';
       finalFormValidity = false;
@@ -443,13 +412,12 @@ export default function WaiverApplicationForm() {
     setIsFormValidForSubmit(finalFormValidity);
     return finalFormValidity;
   }, [
-    formData, waiverSchemeData, requiredDocFiles, existingFileRefs, docValidationStatus, validateField,
+    formData, waiverSchemeData, requiredDocFiles, customFieldFiles, existingFileRefs, docValidationStatus, validateField,
     isFaceVerificationComplete, showFaceVerificationModule, annexureFile, existingAnnexureFileRef,
     isAadhaarFromGovDB, otpVerificationMobileNumber, isOtpVerified, aadhaarPhotoIdForVerification
   ]);
 
   useEffect(() => { runFullValidation(false); }, [runFullValidation]);
-
 
   const triggerEntityExtraction = useCallback(async (docTypeKey, file) => {
     console.log(`Triggering entity extraction for document schema: ${docTypeKey}...`);
@@ -463,169 +431,201 @@ export default function WaiverApplicationForm() {
         setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: [{ fieldLabel: 'Configuration Error', expected: '', actual: 'Document type not configured for auto-fill details.' }] } }));
         return;
     }
-        console.log(`Triggering entity extraction for ${docDefinition.label || docTypeKey} (type: ${docTypeKey})`);
-        setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'validating', mismatches: null } }));
-        setAutoFillError(''); setApiError('');
-        setAnnexureEligibleMismatches(prev => prev.filter(m => m.docTypeKey !== docTypeKey));
+    setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'validating', mismatches: null } }));
+    setAutoFillError('');
 
-        if (docTypeKey === 'aadhaar_card') {
-            setIsAadhaarFromGovDB(false);
-            setOtpVerificationMobileNumber(null);
-            setShowOtpModal(false);
-            setIsOtpVerified(false);
-            setOtpVerificationError("");
-            setCurrentOtpRequestId(null);
-            setShowFaceVerificationModule(false);
-            setIsFaceVerificationComplete(false);
-            setFaceVerificationError("");
-        }
+    if (docTypeKey === 'aadhaar_card') {
+        setIsAadhaarFromGovDB(false);
+        setOtpVerificationMobileNumber(null);
+        setShowOtpModal(false);
+        setIsOtpVerified(false);
+        setOtpVerificationError("");
+        setCurrentOtpRequestId(null);
+        setShowFaceVerificationModule(false);
+        setIsFaceVerificationComplete(false);
+        setFaceVerificationError("");
+    }
 
-        const docFieldsSchema = docDefinition.fields || [];
-        if (docFieldsSchema.length === 0) {
-            console.warn(`No field schema defined for document type ${docTypeKey} (for ${docDefinition.label}). Auto-fill skipped.`);
-            setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: [{ fieldLabel: 'Configuration Error', expected: '', actual: 'Fields for this document type not configured.' }] } }));
+    const docFieldsSchema = docDefinition.fields || [];
+    if (docFieldsSchema.length === 0) {
+        console.warn(`No field schema defined for document type ${docTypeKey} (for ${docDefinition.label}). Auto-fill skipped.`);
+        setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: [{ fieldLabel: 'Configuration Error', expected: '', actual: 'Fields for this document type not configured.' }] } }));
+        return;
+    }
+    const fieldsPayload = JSON.stringify({ label: docDefinition.label || docTypeKey, fields: docFieldsSchema.map(f => ({ key: f.key, label: f.label, prompt: f.prompt || '' })) });
+
+    try {
+        const ocrApiFormData = new FormData();
+        ocrApiFormData.append('file', file);
+        ocrApiFormData.append('docType', docTypeKey);
+        ocrApiFormData.append('fields', fieldsPayload);
+        const ocrResponse = await axiosInstance.post('/api/application/extract-entity', ocrApiFormData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        const { extracted_data: extractedDataFromOCR, doc_name: detectedDocTypeFromApi } = ocrResponse.data;
+
+        if (detectedDocTypeFromApi !== docTypeKey) {
+            const expectedLabel = docDefinition.label || docTypeKey;
+            const actualDef = detectedDocTypeFromApi === 'aadhaar_card' ? waiverSchemeData?.aadhaar_card_definition : (detectedDocTypeFromApi === 'pan_card' ? waiverSchemeData?.pan_card_definition : waiverSchemeData?.document_definitions?.[detectedDocTypeFromApi]);
+            const actualLabel = actualDef?.label || detectedDocTypeFromApi || 'Unknown';
+            const mismatchError = [{ fieldLabel: 'Document Type Mismatch', expected: docTypeKey, actual: detectedDocTypeFromApi || 'Unknown' }];
+            setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: mismatchError } }));
+            setAutoFillError(`Incorrect document type uploaded for ${expectedLabel}. Expected ${expectedLabel}, but received a document identified as ${actualLabel}.`);
             return;
         }
-        const fieldsPayload = JSON.stringify({ label: docDefinition.label || docTypeKey, fields: docFieldsSchema.map(f => ({ key: f.key, label: f.label, prompt: f.prompt || '' })) });
 
-        try {
-            const ocrApiFormData = new FormData();
-            ocrApiFormData.append('file', file);
-            ocrApiFormData.append('docType', docTypeKey);
-            ocrApiFormData.append('fields', fieldsPayload);
-            const ocrResponse = await axiosInstance.post('/api/application/extract-entity', ocrApiFormData, { headers: { 'Content-Type': 'multipart/form-data' } });
-            const { extracted_data: extractedDataFromOCR, doc_name: detectedDocTypeFromApi } = ocrResponse.data;
+        const ocrDataMap = typeof extractedDataFromOCR === 'object' && !Array.isArray(extractedDataFromOCR) ? { ...extractedDataFromOCR } : (Array.isArray(extractedDataFromOCR) ? extractedDataFromOCR.reduce((acc, pair) => { if (pair && pair.key) acc[pair.key] = pair.value; return acc; }, {}) : {});
+        let dataToUseForAutofill = ocrDataMap;
+        let isDataFromDB = false;
+        let localPhotoIdForFaceVerification = null;
+        let govDbSourceNote = 'Data extracted via OCR.';
+        
+        const uniqueIdentifiersToCheck = Object.entries(ocrDataMap).map(([key, value]) => ({ key, value })).filter(pair => docDefinition.fields.some(f => f.is_unique_identifier && f.key === pair.key && pair.value && String(pair.value).trim() !== ''));
 
-            if (detectedDocTypeFromApi !== docTypeKey) {
-                const expectedLabel = docDefinition.label || docTypeKey;
-                const actualDef = detectedDocTypeFromApi === 'aadhaar_card' ? waiverSchemeData?.aadhaar_card_definition : (detectedDocTypeFromApi === 'pan_card' ? waiverSchemeData?.pan_card_definition : waiverSchemeData?.document_definitions?.[detectedDocTypeFromApi]);
-                const actualLabel = actualDef?.label || detectedDocTypeFromApi || 'Unknown';
-                const mismatchError = [{ fieldLabel: 'Document Type Mismatch', expected: docTypeKey, actual: detectedDocTypeFromApi || 'Unknown' }];
-                setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: mismatchError } }));
-                setAutoFillError(`Incorrect document type uploaded for ${expectedLabel}. Expected ${expectedLabel}, but received a document identified as ${actualLabel}.`);
-                return;
+        if (uniqueIdentifiersToCheck.length > 0) {
+            try {
+                const govDbApiResponse = await axiosInstance.post('/api/document/check-unique', { schema_definition_id: docDefinition._id, identifiers_to_check: uniqueIdentifiersToCheck });
+                const govDbResponseData = govDbApiResponse.data;
+                if (govDbResponseData.exists === true && govDbResponseData.matched_keys?.length > 0) {
+                    const matchedSubmission = govDbResponseData.matched_keys[0];
+                    isDataFromDB = true;
+                    dataToUseForAutofill = (matchedSubmission.fields || []).reduce((acc, field) => {
+                        acc[field.field_id] = field.value;
+                        if (docTypeKey === 'aadhaar_card' && (field.field_id === 'photo' || field.key === 'photo') && field.fileRef) {
+                            localPhotoIdForFaceVerification = field.fileRef;
+                        }
+                        return acc;
+                    }, {});
+                    govDbSourceNote = 'Data matched with existing verified record.';
+                } else if (govDbResponseData.exists === false && govDbResponseData.totalCount > 0) {
+                    const mismatchErrorMsg = `The uploaded ${docDefinition.label || docTypeKey} does not match our existing records.`;
+                    setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: [{ fieldLabel: 'Document Verification', expected: 'Match in existing records', actual: 'No exact match found.' }] } }));
+                    setAutoFillError(mismatchErrorMsg); return;
+                }
+            } catch (govDbError) { console.warn(`GovDB check failed for ${docTypeKey}:`, govDbError); setAutoFillError(`Could not verify document. ${govDbError.response?.data?.message || ''}`); }
+        }
+
+        if (!isDataFromDB) {
+            const allAutoFillFieldsForThisDoc = waiverSchemeData.fields.filter(f => f.auto_fill_sources?.some(s => s.startsWith(`${docTypeKey}.`)));
+            const missingAutoFillFields = [];
+
+            allAutoFillFieldsForThisDoc.forEach(appField => {
+                const sourceKey = getFieldKeyFromSource(appField.auto_fill_sources.find(s => s.startsWith(`${docTypeKey}.`)));
+                if (!dataToUseForAutofill[sourceKey] || String(dataToUseForAutofill[sourceKey]).trim() === "") {
+                    missingAutoFillFields.push(appField.field_label);
+                }
+            });
+
+            if (missingAutoFillFields.length > 0) {
+                console.error(`Required auto-fill fields missing from ${docTypeKey} extraction:`, missingAutoFillFields);
+                setDocValidationStatus(prev => ({
+                    ...prev,
+                    [docTypeKey]: {
+                        status: 'extraction_incomplete',
+                        missingFields: missingAutoFillFields,
+                    }
+                }));
+                return; 
             }
+        }
 
-            const ocrDataMap = typeof extractedDataFromOCR === 'object' && !Array.isArray(extractedDataFromOCR) ? { ...extractedDataFromOCR } : (Array.isArray(extractedDataFromOCR) ? extractedDataFromOCR.reduce((acc, pair) => { if (pair && pair.key) acc[pair.key] = pair.value; return acc; }, {}) : {});
-            let uniqueIdentifiersToCheck = Object.entries(ocrDataMap).map(([key, value]) => ({ key, value })).filter(pair => docDefinition.fields.some(f => f.is_unique_identifier && f.key === pair.key && pair.value && String(pair.value).trim() !== ''));
-            let dataToUseForAutofill = ocrDataMap;
-            let localPhotoIdForFaceVerification = null;
-            let govDbCheckPerformed = false;
-            let govDbSourceNote = 'Data extracted via OCR.';
-            let govDbResponseData = null;
+        if (docTypeKey === 'aadhaar_card') {
+            if (!localPhotoIdForFaceVerification) {
+                const photoFieldKey = docDefinition.fields.find(f => f.key === 'photo' || f.label.toLowerCase().includes('photo'))?.key;
+                if (photoFieldKey && dataToUseForAutofill[photoFieldKey]) {
+                    localPhotoIdForFaceVerification = dataToUseForAutofill[photoFieldKey];
+                }
+            }
+            setAadhaarPhotoIdForVerification(localPhotoIdForFaceVerification);
+            setIsAadhaarFromGovDB(isDataFromDB);
 
-            if (uniqueIdentifiersToCheck.length > 0) {
-                govDbCheckPerformed = true;
-                try {
-                    const govDbApiResponse = await axiosInstance.post('/api/document/check-unique', { schema_definition_id: docDefinition._id, identifiers_to_check: uniqueIdentifiersToCheck });
-                    govDbResponseData = govDbApiResponse.data;
-                    if (govDbResponseData.exists === true && govDbResponseData.matched_keys?.length > 0) {
-                        const matchedSubmission = govDbResponseData.matched_keys[0];
-                        dataToUseForAutofill = (matchedSubmission.fields || []).reduce((acc, field) => {
-                            acc[field.field_id] = field.value;
-                            if (docTypeKey === 'aadhaar_card' && (field.field_id === 'photo' || field.key === 'photo') && field.fileRef) {
-                                localPhotoIdForFaceVerification = field.fileRef;
-                            }
-                            return acc;
-                        }, {});
-                        govDbSourceNote = 'Data matched with existing verified record.';
-                        setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'verified', mismatches: null, note: govDbSourceNote } }));
-                    } else if (govDbResponseData.exists === false && govDbResponseData.totalCount > 0) {
-                        const mismatchErrorMsg = `The uploaded ${docDefinition.label || docTypeKey} does not match our existing records.`;
-                        setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: [{ fieldLabel: 'Document Verification', expected: 'Match in existing records', actual: 'No exact match found.' }] } }));
-                        setAutoFillError(mismatchErrorMsg); return;
-                    } else { 
-                        if (docTypeKey === 'aadhaar_card') {
-                            const photoFieldKey = docDefinition.fields.find(f => f.key === 'photo' || f.label.toLowerCase().includes('photo'))?.key;
-                            if (photoFieldKey && ocrDataMap[photoFieldKey] && typeof ocrDataMap[photoFieldKey] === 'string') localPhotoIdForFaceVerification = ocrDataMap[photoFieldKey];
+            if (isDataFromDB) {
+                const mobileKey = docDefinition.fields.find(f => f.key === 'mobile_number' || f.key === 'phone_number' || f.type === 'phone')?.key;
+                const mobileNumberFromDB = mobileKey ? dataToUseForAutofill[mobileKey] : null;
+
+                if (mobileNumberFromDB && localPhotoIdForFaceVerification) {
+                    setOtpVerificationMobileNumber(mobileNumberFromDB); setShowOtpModal(true);
+                } else {
+                     if (!mobileNumberFromDB) console.warn("Mobile missing from GovDB Aadhaar.");
+                     if (!localPhotoIdForFaceVerification) console.warn("Photo ID missing from GovDB Aadhaar.");
+                }
+            } else {
+                if (localPhotoIdForFaceVerification) setShowFaceVerificationModule(true);
+                else console.warn("New Aadhaar (OCR), but no photo_id obtained.");
+            }
+        }
+        
+        const currentMismatches = [];
+        let canProceedWithOverallFill = true;
+
+        (waiverSchemeData?.fields || []).forEach(targetField => {
+            const relevantSource = targetField.auto_fill_sources?.find(source => source.startsWith(`${docTypeKey}.`));
+            if (relevantSource) {
+                const sourceKey = getFieldKeyFromSource(relevantSource);
+                if (sourceKey && dataToUseForAutofill.hasOwnProperty(sourceKey)) {
+                    const autoFillValueStr = String(dataToUseForAutofill[sourceKey] ?? '');
+                    const targetFieldId = targetField.field_id;
+                    if (autoFilledFields[targetFieldId] && autoFilledFields[targetFieldId].verifiedByDocType !== docTypeKey) {
+                        const existingVerifiedValueStr = String(autoFilledFields[targetFieldId].value ?? '');
+                        if (existingVerifiedValueStr.toLowerCase() !== autoFillValueStr.toLowerCase()) {
+                            const confDocDef = autoFilledFields[targetFieldId].verifiedByDocType === 'aadhaar_card' ? waiverSchemeData?.aadhaar_card_definition : (autoFilledFields[targetFieldId].verifiedByDocType === 'pan_card' ? waiverSchemeData?.pan_card_definition : waiverSchemeData?.document_definitions?.[autoFilledFields[targetFieldId].verifiedByDocType]);
+                            currentMismatches.push({ fieldLabel: targetField.field_label, expected: existingVerifiedValueStr, actual: autoFillValueStr, conflictingDoc: confDocDef?.label || autoFilledFields[targetFieldId].verifiedByDocType });
+                            canProceedWithOverallFill = false;
                         }
                     }
-                } catch (govDbError) { console.warn(`GovDB check failed for ${docTypeKey}:`, govDbError); setAutoFillError(`Could not verify document. ${govDbError.response?.data?.message || ''}`); }
-            } else { 
-                 if (docTypeKey === 'aadhaar_card') {
-                    const photoFieldKey = docDefinition.fields.find(f => f.key === 'photo' || f.label.toLowerCase().includes('photo'))?.key;
-                    if (photoFieldKey && ocrDataMap[photoFieldKey] && typeof ocrDataMap[photoFieldKey] === 'string') localPhotoIdForFaceVerification = ocrDataMap[photoFieldKey];
                 }
             }
+        });
 
-            if (docTypeKey === 'aadhaar_card') {
-                setAadhaarPhotoIdForVerification(localPhotoIdForFaceVerification);
-                const isFromGovDB = govDbCheckPerformed && govDbResponseData?.exists === true && govDbResponseData.matched_keys?.length > 0;
-                setIsAadhaarFromGovDB(isFromGovDB);
-                if (isFromGovDB) {
-                    const mobileKey = docDefinition.fields.find(f => f.key === 'mobile_number' || f.key === 'phone_number' || f.type === 'phone')?.key;
-                    const mobileNumberFromDB = mobileKey ? dataToUseForAutofill[mobileKey] : null;
-                    if (mobileNumberFromDB && localPhotoIdForFaceVerification) {
-                        setOtpVerificationMobileNumber(mobileNumberFromDB); setShowOtpModal(true);
-                    } else { setShowFaceVerificationModule(false); if (!mobileNumberFromDB) console.warn("Mobile missing from GovDB Aadhaar."); if (!localPhotoIdForFaceVerification) console.warn("Photo ID missing from GovDB Aadhaar.");}
-                } else { if (localPhotoIdForFaceVerification) setShowFaceVerificationModule(true); else setShowFaceVerificationModule(false); }
-                if (!govDbCheckPerformed || (govDbResponseData?.exists === false && (govDbResponseData.totalCount === 0 || govDbResponseData.totalCount === undefined))) {
-                    if (docValidationStatus[docTypeKey]?.status !== 'error') setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'verified', mismatches: null, note: 'New document processed via OCR.' } }));
-                }
-            }
-
-            const currentMismatches = []; let canProceedWithOverallFill = true;
+        if (canProceedWithOverallFill) {
+            let updatedFormDataFlag = false;
+            const newAutoFilledForThisDoc = {};
+            const currentFormDataSnapshot = { ...formData };
             (waiverSchemeData?.fields || []).forEach(targetField => {
                 const relevantSource = targetField.auto_fill_sources?.find(source => source.startsWith(`${docTypeKey}.`));
                 if (relevantSource) {
                     const sourceKey = getFieldKeyFromSource(relevantSource);
                     if (sourceKey && dataToUseForAutofill.hasOwnProperty(sourceKey)) {
-                        const autoFillValueStr = String(dataToUseForAutofill[sourceKey] ?? '');
+                        let autoFillValue = String(dataToUseForAutofill[sourceKey] ?? '');
+                        if (targetField.type === 'date' && autoFillValue.match(/^\d{2}-\d{2}-\d{4}$/)) autoFillValue = formatDateToYYYYMMDD(autoFillValue);
+                        else if (targetField.type === 'date' && autoFillValue.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) autoFillValue = autoFillValue.split('T')[0];
+                        
                         const targetFieldId = targetField.field_id;
-                        if (autoFilledFields[targetFieldId] && autoFilledFields[targetFieldId].verifiedByDocType !== docTypeKey) {
-                            const existingVerifiedValueStr = String(autoFilledFields[targetFieldId].value ?? '');
-                            if (existingVerifiedValueStr.toLowerCase() !== autoFillValueStr.toLowerCase()) {
-                                const confDocDef = autoFilledFields[targetFieldId].verifiedByDocType === 'aadhaar_card' ? waiverSchemeData?.aadhaar_card_definition : (autoFilledFields[targetFieldId].verifiedByDocType === 'pan_card' ? waiverSchemeData?.pan_card_definition : waiverSchemeData?.document_definitions?.[autoFilledFields[targetFieldId].verifiedByDocType]);
-                                currentMismatches.push({ fieldLabel: targetField.field_label, expected: existingVerifiedValueStr, actual: autoFillValueStr, conflictingDoc: confDocDef?.label || autoFilledFields[targetFieldId].verifiedByDocType });
-                                canProceedWithOverallFill = false;
+                        const existingManualValue = String(currentFormDataSnapshot[targetFieldId] ?? '');
+                        const isManuallyFilled = existingManualValue && !autoFilledFields[targetFieldId];
+
+                        if (isManuallyFilled && existingManualValue.toLowerCase() !== autoFillValue.toLowerCase()) {
+                            currentMismatches.push({ fieldLabel: targetField.field_label, expected: existingManualValue, actual: autoFillValue, note: "manual value conflict" });
+                        } else {
+                            if (currentFormDataSnapshot[targetFieldId] !== autoFillValue) {
+                                currentFormDataSnapshot[targetFieldId] = autoFillValue;
+                                updatedFormDataFlag = true;
                             }
+                            newAutoFilledForThisDoc[targetFieldId] = { value: autoFillValue, verifiedByDocType: docTypeKey, originalSourceKey: sourceKey };
                         }
                     }
                 }
             });
-
-            if (canProceedWithOverallFill) {
-                let updatedFormDataFlag = false; const newAutoFilledForThisDoc = {}; const currentFormDataSnapshot = { ...formData };
-                (waiverSchemeData?.fields || []).forEach(targetField => {
-                    const relevantSource = targetField.auto_fill_sources?.find(source => source.startsWith(`${docTypeKey}.`));
-                    if (relevantSource) {
-                        const sourceKey = getFieldKeyFromSource(relevantSource);
-                        if (sourceKey && dataToUseForAutofill.hasOwnProperty(sourceKey)) {
-                            let autoFillValue = String(dataToUseForAutofill[sourceKey] ?? '');
-                            if (targetField.type === 'date' && autoFillValue.match(/^\d{2}-\d{2}-\d{4}$/)) autoFillValue = formatDateToYYYYMMDD(autoFillValue);
-                            else if (targetField.type === 'date' && autoFillValue.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) autoFillValue = autoFillValue.split('T')[0];
-                            const targetFieldId = targetField.field_id; const existingManualValue = String(currentFormDataSnapshot[targetFieldId] ?? '');
-                            if (existingManualValue.toLowerCase() === '' || existingManualValue.toLowerCase() === autoFillValue.toLowerCase() || (autoFilledFields[targetFieldId] && autoFilledFields[targetFieldId].verifiedByDocType === docTypeKey)) {
-                                if (currentFormDataSnapshot[targetFieldId] !== autoFillValue) { currentFormDataSnapshot[targetFieldId] = autoFillValue; updatedFormDataFlag = true; }
-                                newAutoFilledForThisDoc[targetFieldId] = { value: autoFillValue, verifiedByDocType: docTypeKey, originalSourceKey: sourceKey };
-                            } else if (existingManualValue !== '' && existingManualValue.toLowerCase() !== autoFillValue.toLowerCase()) {
-                                currentMismatches.push({ fieldLabel: targetField.field_label, expected: existingManualValue, actual: autoFillValue, note: "manual value conflict" });
-                            }
-                        }
-                    }
-                });
-                if (updatedFormDataFlag) setFormData(currentFormDataSnapshot);
-                if (Object.keys(newAutoFilledForThisDoc).length > 0) setAutoFilledFields(prev => ({ ...prev, ...newAutoFilledForThisDoc }));
-                const currentStatus = docValidationStatus[docTypeKey];
-                if (!currentStatus || (currentStatus.status !== 'error' || (currentStatus.mismatches && currentStatus.mismatches[0]?.expected !== 'Match in existing records'))) {
-                    if (currentMismatches.length > 0) {
-                        setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: currentMismatches } }));
-                        setAutoFillError(`Data conflicts for ${docDefinition.label || docTypeKey}.`);
-                        if (currentMismatches.every(mm => ANNEXURE_ELIGIBLE_FIELD_LABELS.includes(mm.fieldLabel))) setAnnexureEligibleMismatches(prev => [...prev.filter(m => m.docTypeKey !== docTypeKey), ...currentMismatches.map(mm => ({...mm, docTypeKey}))]);
-                    } else if (currentStatus?.status !== 'verified') {
-                        setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'verified', mismatches: null, note: govDbSourceNote } }));
-                    }
+            if (updatedFormDataFlag) setFormData(currentFormDataSnapshot);
+            if (Object.keys(newAutoFilledForThisDoc).length > 0) setAutoFilledFields(prev => ({ ...prev, ...newAutoFilledForThisDoc }));
+            
+            if (currentMismatches.length > 0) {
+                setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: currentMismatches } }));
+                setAutoFillError(`Data conflicts for ${docDefinition.label || docTypeKey}.`);
+                if (currentMismatches.every(mm => ANNEXURE_ELIGIBLE_FIELD_LABELS.includes(mm.fieldLabel))) {
+                    setAnnexureEligibleMismatches(prev => [...prev.filter(m => m.docTypeKey !== docTypeKey), ...currentMismatches.map(mm => ({...mm, docTypeKey}))]);
                 }
             } else {
-                setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: currentMismatches } }));
-                setAutoFillError(`Critical mismatches for ${docDefinition.label || docTypeKey}.`);
+                setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'verified', mismatches: null, note: govDbSourceNote } }));
             }
-        } catch (error) {
-            console.error(`Extraction/GovDB check failed for ${docDefinition?.label || docTypeKey}:`, error);
-            const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to process document.';
-            setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: [{ fieldLabel: 'Processing Error', actual: errorMsg }] } }));
-            setApiError(`Error processing ${docDefinition?.label || docTypeKey}: ${errorMsg}`);
+        } else {
+            setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: currentMismatches } }));
+            setAutoFillError(`Critical mismatches for ${docDefinition.label || docTypeKey}.`);
         }
+    } catch (error) {
+        console.error(`Extraction/GovDB check failed for ${docDefinition?.label || docTypeKey}:`, error);
+        const errorMsg = error.response?.data?.message || 'Failed to process document.';
+        setDocValidationStatus(prev => ({ ...prev, [docTypeKey]: { status: 'error', mismatches: [{ fieldLabel: 'Processing Error', actual: errorMsg }] } }));
+        setErrorModal({ show: true, message: `Error processing ${docDefinition?.label || docTypeKey}: ${errorMsg}` });
+    }
   }, [waiverSchemeData, formData, autoFilledFields, getFieldKeyFromSource, docValidationStatus]);
 
   const handleRequiredDocFileChangeCallback = useCallback((docTypeKey, file) => {
@@ -633,7 +633,7 @@ export default function WaiverApplicationForm() {
     const refKey = `reqDoc_${docTypeKey}`;
     setExistingFileRefs(prev => { const n = {...prev}; delete n[refKey]; return n; });
     setAnnexureEligibleMismatches(prev => prev.filter(m => m.docTypeKey !== docTypeKey));
-
+    
     if (file) {
         triggerEntityExtraction(docTypeKey, file);
     } else {
@@ -668,7 +668,7 @@ export default function WaiverApplicationForm() {
         }
     }
   }, [triggerEntityExtraction, formData, autoFilledFields, autoFillError, waiverSchemeData, annexureEligibleMismatches]);
-
+  
   const handleFaceVerificationResult = useCallback((success, errorMsg = "") => {
       setIsFaceVerificationComplete(success);
       if (success) { setFaceVerificationError(""); }
@@ -689,13 +689,11 @@ export default function WaiverApplicationForm() {
     if (!otpVerificationMobileNumber) { setOtpVerificationError("Mobile number not available."); return; }
     setOtpVerificationError("");
     try {
-        // The OtpVerificationModal now passes the requestId it received from /api/otp/send
-        setCurrentOtpRequestId(requestId); // Ensure currentOtpRequestId is set for this attempt
+        setCurrentOtpRequestId(requestId);
 
         const response = await axiosInstance.post('/api/otp/verify', {
             requestId: requestId,
             otp: otpValue,
-            // waiverSchemeId: waiverSchemeId // Optional context
         });
         if (response.data.verified) {
             setIsOtpVerified(true); setShowOtpModal(false); setOtpVerificationError("");
@@ -705,20 +703,19 @@ export default function WaiverApplicationForm() {
             setOtpVerificationError(response.data.error || "Incorrect OTP."); setIsOtpVerified(false);
         }
     } catch (error) {
-        setOtpVerificationError(error.response?.data?.error || "OTP verification service failed."); setIsOtpVerified(false);
+        setOtpVerificationError(error.response?.data?.message || "OTP verification service failed."); setIsOtpVerified(false);
     } finally { runFullValidation(showValidationErrors); }
   };
 
   const handleOtpModalClose = () => {
       setShowOtpModal(false);
-      // setCurrentOtpRequestId(null); // Clearing here might be too soon if user reopens to try same OTP
       runFullValidation(showValidationErrors);
   };
 
 
   const handleSaveDraft = async () => {
     if (isSavingDraft || isSubmitting) return;
-    setIsSavingDraft(true); setApiError("");
+    setIsSavingDraft(true);
     try {
       const payloadFields = (waiverSchemeData.fields || []).map(f => ({
         field_id: f.field_id,
@@ -728,90 +725,77 @@ export default function WaiverApplicationForm() {
       }));
 
       const requiredDocRefsPayload = [];
-      const addDocToPayload = (docKey) => {
-          if (existingFileRefs[`reqDoc_${docKey}`] || requiredDocFiles[docKey]) {
-              requiredDocRefsPayload.push({ documentTypeKey: docKey, fileRef: existingFileRefs[`reqDoc_${docKey}`] || `local:${requiredDocFiles[docKey]?.name}`});
+      Object.keys(requiredDocFiles).forEach(docKey => {
+          if(requiredDocFiles[docKey]) {
+            requiredDocRefsPayload.push({ documentTypeKey: docKey, fileRef: `local:${requiredDocFiles[docKey]?.name}` });
+          } else if (existingFileRefs[`reqDoc_${docKey}`]) {
+            requiredDocRefsPayload.push({ documentTypeKey: docKey, fileRef: existingFileRefs[`reqDoc_${docKey}`] });
           }
-      };
-      addDocToPayload('aadhaar_card');
-      addDocToPayload('pan_card');
-      (waiverSchemeData.required_documents || []).forEach(doc => addDocToPayload(doc.schema_id || doc.name));
+      });
 
       const payload = {
         waiver_scheme_id: waiverSchemeId,
         fields: payloadFields,
-        requiredDocumentRefs: requiredDocRefsPayload.filter(ref => ref.fileRef),
+        requiredDocumentRefs: requiredDocRefsPayload,
         autoFilledFields: autoFilledFields,
         annexureDocumentRef: existingAnnexureFileRef || (annexureFile ? `local:${annexureFile.name}` : null),
       };
-      await axiosInstance.post(`/api/waiver-submissions/draft/${waiverSchemeId}`, payload); // Ensure this endpoint is correct
+      await axiosInstance.post(`/api/waiver-submissions/draft/${waiverSchemeId}`, payload);
       setDraftSaveStatus({ saved: true, time: new Date() });
       setTimeout(() => setDraftSaveStatus({ saved: false, time: null }), 3000);
     } catch (err) {
-      setApiError(err.response?.data?.error || "Waiver draft save failed.");
+      setErrorModal({show: true, message: err.response?.data?.message || "Waiver draft save failed."});
     } finally {
       setIsSavingDraft(false);
     }
   };
 
   const handleSubmit = (e) => {
-    e.preventDefault(); setApiError(""); setAutoFillError(""); setShowValidationErrors(true);
+    e.preventDefault();
+    setAutoFillError(""); 
+    setShowValidationErrors(true);
     setOtpVerificationError("");
 
-    if (runFullValidation(true)) {
-      submitWaiverApplication();
+    if (!runFullValidation(true)) {
+      const errorKeys = Object.keys(formErrors);
+      if (errorKeys.length > 0) {
+        const firstErrorKey = errorKeys[0];
+        let selector = `[id="${firstErrorKey}"], [id="custom_${firstErrorKey}"]`;
+        if (firstErrorKey.startsWith('reqDoc_') || firstErrorKey === 'face_verification' || firstErrorKey === 'annexure' || firstErrorKey === 'otp_verification') {
+          selector = `[id="${firstErrorKey}"]`;
+        }
+        const element = formRef.current?.querySelector(selector);
+        if (element) {
+          element.focus({ preventScroll: true });
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          window.scrollTo(0,0);
+        }
+      } else {
+        window.scrollTo(0,0);
+      }
     } else {
-      console.log("Waiver form validation failed.", formErrors);
-      let errorMessages = "Please correct the issues before submitting your waiver application:\n";
-      Object.values(formErrors).forEach(value => { errorMessages += `- ${value}\n`; });
-      if (isAadhaarFromGovDB && otpVerificationMobileNumber && !isOtpVerified && !formErrors.otp_verification) {
-          errorMessages += "- Mobile OTP verification for Aadhaar is pending.\n";
-      }
-      if (showFaceVerificationModule && aadhaarPhotoIdForVerification && !isFaceVerificationComplete && !formErrors.face_verification) {
-           let otpPrerequisiteMet = !isAadhaarFromGovDB || !otpVerificationMobileNumber || isOtpVerified;
-           if (otpPrerequisiteMet) errorMessages += "- Face verification is required.\n";
-      }
-      window.alert(errorMessages);
-        const errorKeys = Object.keys(formErrors);
-        if (errorKeys.length > 0) {
-            const firstErrorKey = errorKeys[0];
-            let selector = `[id="${firstErrorKey}"], [id="custom_${firstErrorKey}"]`;
-            if (firstErrorKey.startsWith('reqDoc_') || firstErrorKey === 'face_verification' || firstErrorKey === 'annexure' || firstErrorKey === 'otp_verification') {
-                selector = `[id="${firstErrorKey}"]`;
-            }
-            const element = formRef.current?.querySelector(selector);
-            if (element) {
-                element.focus({ preventScroll: true });
-                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            } else {
-                const otpErrorElement = document.getElementById('otp-error-anchor');
-                const faceErrorElement = document.getElementById('face-verification-section-anchor');
-                if (formErrors.otp_verification && otpErrorElement) otpErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                else if (formErrors.face_verification && faceErrorElement) faceErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                else window.scrollTo(0,0);
-            }
-        } else { window.scrollTo(0,0); }
+      submitWaiverApplication();
     }
   };
 
   const submitWaiverApplication = async () => {
-    if (isSubmitting) return; setIsSubmitting(true); setApiError("");
+    if (isSubmitting) return; setIsSubmitting(true);
     try {
       const filesToUpload = [];
+      Object.keys(requiredDocFiles).forEach(docTypeKey => {
+        const refKey = `reqDoc_${docTypeKey}`;
+        if (requiredDocFiles[docTypeKey] && !existingFileRefs[refKey]) {
+          filesToUpload.push({ key: refKey, file: requiredDocFiles[docTypeKey], type: 'required', docTypeKey: docTypeKey });
+        }
+      });
+
       Object.entries(customFieldFiles).forEach(([fieldId, file]) => {
         if (!existingFileRefs[fieldId]) {
           filesToUpload.push({ key: fieldId, file: file, type: 'custom' });
         }
       });
-      const processRequiredDoc = (docKey) => {
-          if (requiredDocFiles[docKey] && !existingFileRefs[`reqDoc_${docKey}`]) {
-              filesToUpload.push({ key: `reqDoc_${docKey}`, file: requiredDocFiles[docKey], type: 'required', docTypeKey: docKey });
-          }
-      };
-      processRequiredDoc('aadhaar_card');
-      processRequiredDoc('pan_card');
-      (waiverSchemeData.required_documents || []).forEach(doc => processRequiredDoc(doc.schema_id || doc.name));
-
+      
       if (annexureFile && !existingAnnexureFileRef) {
         filesToUpload.push({ key: 'annexure_document', file: annexureFile, type: 'annexure' });
       }
@@ -823,19 +807,19 @@ export default function WaiverApplicationForm() {
         const fieldSchema = type === 'custom' ? waiverSchemeData?.fields.find(f => f.field_id === key) : null;
         let docDefForLabel;
         if (type === 'required') {
-            if (docTypeKey === 'aadhaar_card') docDefForLabel = waiverSchemeData?.aadhaar_card_definition;
-            else if (docTypeKey === 'pan_card') docDefForLabel = waiverSchemeData?.pan_card_definition;
-            else docDefForLabel = waiverSchemeData?.document_definitions?.[docTypeKey];
+          if (docTypeKey === 'aadhaar_card') docDefForLabel = waiverSchemeData?.aadhaar_card_definition;
+          else if (docTypeKey === 'pan_card') docDefForLabel = waiverSchemeData?.pan_card_definition;
+          else docDefForLabel = waiverSchemeData?.document_definitions?.[docTypeKey];
         }
         const docLabel = type === 'annexure' ? 'Annexure Document' : (type === 'required' ? (docDefForLabel?.label || docTypeKey) : (fieldSchema?.field_label || key.replace('reqDoc_','')));
         const uploadUrl = "/api/image";
         const fileFormData = new FormData(); fileFormData.append("file", file);
         try {
-            const { data: uploadResult } = await axiosInstance.post(uploadUrl, fileFormData, { headers: { "Content-Type": "multipart/form-data" } });
-            if (!uploadResult || !uploadResult.id) throw new Error(`File ID missing for ${docLabel}.`);
-            uploadedFileRefs[key] = uploadResult.id;
+          const { data: uploadResult } = await axiosInstance.post(uploadUrl, fileFormData, { headers: { "Content-Type": "multipart/form-data" } });
+          if (!uploadResult || !uploadResult.id) throw new Error(`File ID missing for ${docLabel}.`);
+          uploadedFileRefs[key] = uploadResult.id;
         } catch (uploadError) {
-            throw new Error(`Failed to upload ${docLabel}. ${uploadError.response?.data?.error || uploadError.message}`);
+          throw new Error(`Failed to upload ${docLabel}. ${uploadError.response?.data?.message || uploadError.message}`);
         }
       });
       await Promise.all(uploadPromises);
@@ -851,29 +835,27 @@ export default function WaiverApplicationForm() {
       });
 
       const finalRequiredDocsRefs = [];
-      const addFinalReqDoc = (docKey) => {
-          if (uploadedFileRefs[`reqDoc_${docKey}`]) {
-              finalRequiredDocsRefs.push({ documentTypeKey: docKey, fileRef: uploadedFileRefs[`reqDoc_${docKey}`] });
-          }
-      };
-      addFinalReqDoc('aadhaar_card');
-      addFinalReqDoc('pan_card');
-      (waiverSchemeData.required_documents || []).forEach(doc => addFinalReqDoc(doc.schema_id || doc.name));
+      Object.keys(uploadedFileRefs).forEach(key => {
+        if (key.startsWith('reqDoc_')) {
+          const docTypeKey = key.substring(7);
+          finalRequiredDocsRefs.push({ documentTypeKey: docTypeKey, fileRef: uploadedFileRefs[key] });
+        }
+      });
 
       const aadhaarDataForPayload = {};
       const panDataForPayload = {};
       Object.entries(autoFilledFields).forEach(([fieldId, autoFillInfo]) => {
-          const targetFieldSchema = waiverSchemeData.fields.find(f => f.field_id === fieldId);
-          if (targetFieldSchema && targetFieldSchema.auto_fill_sources) {
-              targetFieldSchema.auto_fill_sources.forEach(sourceString => {
-                  const docType = sourceString.split('.')[0];
-                  const sourceKey = getFieldKeyFromSource(sourceString);
-                  let valueToUse = autoFillInfo.value;
-                  if (targetFieldSchema.type === 'date') valueToUse = formatDateToDDMMYYYY(valueToUse);
-                  if (docType === 'aadhaar_card' && sourceKey) aadhaarDataForPayload[sourceKey] = valueToUse;
-                  else if (docType === 'pan_card' && sourceKey) panDataForPayload[sourceKey] = valueToUse;
-              });
-          }
+        const targetFieldSchema = waiverSchemeData.fields.find(f => f.field_id === fieldId);
+        if (targetFieldSchema && targetFieldSchema.auto_fill_sources) {
+          targetFieldSchema.auto_fill_sources.forEach(sourceString => {
+            const docType = sourceString.split('.')[0];
+            const sourceKey = getFieldKeyFromSource(sourceString);
+            let valueToUse = autoFillInfo.value;
+            if (targetFieldSchema.type === 'date') valueToUse = formatDateToDDMMYYYY(valueToUse);
+            if (docType === 'aadhaar_card' && sourceKey) aadhaarDataForPayload[sourceKey] = valueToUse;
+            else if (docType === 'pan_card' && sourceKey) panDataForPayload[sourceKey] = valueToUse;
+          });
+        }
       });
 
       const submissionPayload = {
@@ -892,7 +874,7 @@ export default function WaiverApplicationForm() {
       setSubmissionId(submissionResult._id || submissionResult.id);
       setSubmissionStatus('submitted');
     } catch (err) {
-      setApiError(err.message || err.response?.data?.error || "Waiver submission failed.");
+      setErrorModal({show: true, message: err.message || err.response?.data?.message || "Waiver submission failed."});
       setSubmissionStatus('filling');
       window.scrollTo(0, 0);
     } finally {
@@ -900,7 +882,7 @@ export default function WaiverApplicationForm() {
     }
   };
 
-  const renderRequiredDocumentItem = (docKey, isMandatoryFixed = false) => {
+  const renderRequiredDocumentItem = (docKey, isRequired) => {
     let docDefinition;
     let docDisplayLabel;
     let docDescription;
@@ -921,10 +903,8 @@ export default function WaiverApplicationForm() {
         docDescription = schemeDocEntry?.description || docDefinition?.description;
     }
 
-    if (!docDefinition && (isMandatoryFixed || schemeDocEntry) ) {
-        return (<ListGroup.Item key={docKey} className="required-doc-item p-3 border rounded mb-3">
-            <Alert variant="warning">Configuration for {docDisplayLabel || docKey} is missing. Contact support.</Alert>
-        </ListGroup.Item>);
+    if (!docDefinition) {
+        return null;
     }
 
     const inputIdAndRefKeyPart = `reqDoc_${docKey}`;
@@ -935,7 +915,7 @@ export default function WaiverApplicationForm() {
     let showItemError = false;
     if (showValidationErrors) {
         if (fileInputError) { showItemError = true; }
-        else if (docStatusInfo?.status === 'error') {
+        else if (docStatusInfo?.status === 'error' || docStatusInfo?.status === 'extraction_incomplete') {
             const allMismatchesAnnexureEligible = docStatusInfo.mismatches?.every(mm => ANNEXURE_ELIGIBLE_FIELD_LABELS.includes(mm.fieldLabel));
             if (!allMismatchesAnnexureEligible) { showItemError = true; }
             else if (allMismatchesAnnexureEligible && !(annexureFile || existingAnnexureFileRef)) { showItemError = true; }
@@ -947,7 +927,7 @@ export default function WaiverApplicationForm() {
         <ListGroup.Item key={docKey} className={`required-doc-item p-3 border rounded mb-3 ${showItemError ? 'doc-item-invalid' : ''} ${isTypeMismatch ? 'doc-item-typemismatch' : ''}`}>
             <Row className="align-items-center g-2">
                 <Col md={4} className="doc-info">
-                    <strong className="d-block">{docDisplayLabel} *</strong>
+                    <strong className="d-block">{docDisplayLabel} {isRequired && '*'}</strong>
                     {docDescription && <small className="text-muted d-block">{docDescription}</small>}
                 </Col>
                 <Col md={hasNew || hasExisting ? 4 : 5} className="doc-input">
@@ -956,7 +936,7 @@ export default function WaiverApplicationForm() {
                         disabled={isSubmitting || isSavingDraft || docStatusInfo?.status === 'validating'}
                         isInvalid={showValidationErrors && !!fileInputError && !hasNew && !hasExisting && !docStatusInfo }
                         size="sm" className="document-file-input" />
-                    {hasExisting && !hasNew && <small className='text-success d-block mt-1'><FaCheckCircle size={12} className="me-1"/>Current: {decodeURIComponent(new URL(existingFileRefs[inputIdAndRefKeyPart]).pathname.split('/').pop() || existingFileRefs[inputIdAndRefKeyPart]).substring(0,20)}...</small>}
+                    {hasExisting && !hasNew && <small className='text-success d-block mt-1'><FaCheckCircle size={12} className="me-1"/>Current: {decodeURIComponent(new URL(existingFileRefs[inputIdAndRefKeyPart]).pathname.split('/').pop()||existingFileRefs[inputIdAndRefKeyPart]).substring(0,20)}...</small>}
                     {hasNew && <small className='text-info d-block mt-1'><FaFileUpload size={12} className="me-1"/>New: {requiredDocFiles[docKey]?.name}</small>}
                     {showValidationErrors && fileInputError && !hasNew && !hasExisting && !docStatusInfo && <Form.Text className="text-danger d-block mt-1">{fileInputError}</Form.Text>}
                 </Col>
@@ -970,6 +950,23 @@ export default function WaiverApplicationForm() {
                     )}
                 </Col>
             </Row>
+            {docStatusInfo?.status === 'extraction_incomplete' && (
+                <Alert variant="danger" className="mismatches mt-2 p-2 small">
+                    <strong className="d-block mb-1">
+                        <FaExclamationTriangle size={14} className="me-1" /> Could Not Read Document
+                    </strong>
+                    We could not read the following essential information from your uploaded {docDisplayLabel}. 
+                    This is likely due to poor image quality or an incorrect document.
+                    <strong className="d-block mt-2">Please upload a clearer, higher-quality picture.</strong>
+                    <hr className="my-1"/>
+                    Missing essential fields:
+                    <ul className="mb-0 mt-1">
+                        {docStatusInfo.missingFields.map((fieldLabel, idx) => (
+                            <li key={idx}><strong>{fieldLabel}</strong></li>
+                        ))}
+                    </ul>
+                </Alert>
+            )}
             {(docStatusInfo?.status === 'error' || isTypeMismatch) && docStatusInfo.mismatches && (
                 <Alert variant={isTypeMismatch ? "danger" : "warning"} className="mismatches mt-2 p-2 small">
                     {isTypeMismatch ? ( <> <strong className="d-block mb-1"><FileWarning size={14} className="me-1"/> Incorrect Document Type:</strong> Expected <strong>{ (docKey === 'aadhaar_card' ? waiverSchemeData?.aadhaar_card_definition?.label : (docKey === 'pan_card' ? waiverSchemeData?.pan_card_definition?.label : waiverSchemeData.document_definitions?.[docStatusInfo.mismatches[0]?.expected]?.label)) || docStatusInfo.mismatches[0]?.expected}</strong>, but uploaded document appears to be <strong>{(docStatusInfo.mismatches[0]?.actual === 'aadhaar_card' ? waiverSchemeData?.aadhaar_card_definition?.label : (docStatusInfo.mismatches[0]?.actual === 'pan_card' ? waiverSchemeData?.pan_card_definition?.label : waiverSchemeData.document_definitions?.[docStatusInfo.mismatches[0]?.actual]?.label)) || docStatusInfo.mismatches[0]?.actual || 'Unknown'}</strong>.</>
@@ -987,13 +984,30 @@ export default function WaiverApplicationForm() {
     const statusInfo = docValidationStatus[docTypeKey];
     const docError = showValidationErrors && formErrors[refKey];
 
-    if (statusInfo?.status === 'validating') return <Badge bg="light" text="dark" className="status-badge validating"><Spinner animation="border" size="sm" className="me-1"/> Validating...</Badge>;
-    if (statusInfo?.status === 'verified') return <Badge bg="success-subtle" text="success-emphasis" className="status-badge verified"><Check size={14} className="me-1"/> Verified</Badge>;
-    if (statusInfo?.status === 'error' && statusInfo.mismatches?.[0]?.fieldLabel === 'Document Type Mismatch') return <Badge bg="danger-subtle" text="danger-emphasis" className="status-badge error"><FileWarning size={14} className="me-1"/> Wrong Doc Type</Badge>;
-    if (statusInfo?.status === 'error') {
-        const allMismatchesAnnexureEligible = statusInfo.mismatches?.every(mm => ANNEXURE_ELIGIBLE_FIELD_LABELS.includes(mm.fieldLabel));
-        if (allMismatchesAnnexureEligible) return <Badge bg="warning-subtle" text="warning-emphasis" className="status-badge error"><AlertCircle size={14} className="me-1"/> Name/Address Mismatch</Badge>;
-        return <Badge bg="danger-subtle" text="danger-emphasis" className="status-badge error"><AlertCircle size={14} className="me-1"/> Data Error</Badge>;
+    if (statusInfo?.status === 'extraction_incomplete') {
+      return (
+          <Badge bg="danger-subtle" text="danger-emphasis" className="status-badge error">
+              <AlertCircle size={14} className="me-1" /> Incomplete Data
+          </Badge>
+      );
+    }
+    
+    if (statusInfo?.status === "validating")
+      return (
+        <Badge bg="light" text="dark" className="status-badge validating"><Spinner animation="border" size="sm" className="me-1"/> Validating...</Badge>
+      );
+    if (statusInfo?.status === "verified")
+      return (
+        <Badge bg="success-subtle" text="success-emphasis" className="status-badge verified"><Check size={14} className="me-1"/> Verified</Badge>
+      );
+    if (statusInfo?.status === "error" && statusInfo.mismatches?.[0]?.fieldLabel === 'Document Type Mismatch')
+      return (
+        <Badge bg="danger-subtle" text="danger-emphasis" className="status-badge error"><FileWarning size={14} className="me-1"/> Wrong Doc Type</Badge>
+      );
+    if (statusInfo?.status === "error") {
+      const allMismatchesAnnexureEligible = statusInfo.mismatches?.every(mm => ANNEXURE_ELIGIBLE_FIELD_LABELS.includes(mm.fieldLabel));
+      if (allMismatchesAnnexureEligible) return <Badge bg="warning-subtle" text="warning-emphasis" className="status-badge error"><AlertCircle size={14} className="me-1"/> Name/Address Mismatch</Badge>;
+      return <Badge bg="danger-subtle" text="danger-emphasis" className="status-badge error"><AlertCircle size={14} className="me-1"/> Data Error</Badge>;
     }
     if (hasNew) return <Badge bg="info-subtle" text="info-emphasis" className="status-badge">New File</Badge>;
     if (hasExisting) return <Badge bg="secondary-subtle" text="secondary-emphasis" className="status-badge">Uploaded</Badge>;
@@ -1001,17 +1015,39 @@ export default function WaiverApplicationForm() {
     return <Badge bg="light" text="dark" className="status-badge">Pending Upload</Badge>;
   };
 
-  if (loading) <LiquidLoader/>;
-  if (!waiverSchemeData && !loading) { return <Container className="mt-5"><Alert variant="danger">{apiError || 'Could not load waiver scheme details.'}</Alert></Container>; }
+  if (loading) return <LiquidLoader/>;
+  if (!waiverSchemeData && !loading) { return <Container className="mt-5"><Alert variant="danger">{errorModal.message || 'Could not load waiver scheme details.'}</Alert></Container>; }
   if (submissionStatus === 'submitted') { return <Container className="mt-5 text-center"><Alert variant="success" className="shadow-sm"><h3><FaCheckCircle className="me-2"/>Waiver Application Submitted!</h3><p>Your application for "{waiverSchemeData?.title}" has been received.</p><p>Submission ID: <strong>{submissionId}</strong></p><hr/><Button variant="primary" size="sm" onClick={() => navigate('/dashboard')}>Go to Dashboard</Button></Alert></Container>; }
 
-  const otherSchemeRequiredDocs = waiverSchemeData.required_documents?.filter(
-      doc => (doc.schema_id || doc.name) !== 'aadhaar_card' && (doc.schema_id || doc.name) !== 'pan_card'
-  ) || [];
+  const allDocumentKeys = new Set([
+      'aadhaar_card',
+      'pan_card',
+      ...(waiverSchemeData.required_documents || []).map(d => d.schema_id)
+  ]);
+  
+  (waiverSchemeData.fields || []).forEach(field => {
+      (field.auto_fill_sources || []).forEach(source => {
+          const docKey = source.split('.')[0];
+          if(docKey) allDocumentKeys.add(docKey);
+      });
+  });
+  
+  const allDocsToRender = Array.from(allDocumentKeys);
+  const requiredDocKeys = new Set(['aadhaar_card', 'pan_card', ...(waiverSchemeData.required_documents || []).map(d => d.schema_id)]);
 
 
   return (
     <Container fluid className="my-4 application-form-container p-md-4">
+        <Modal show={errorModal.show} onHide={() => setErrorModal({ show: false, message: "" })}>
+            <Modal.Header closeButton>
+            <Modal.Title><FaExclamationTriangle className="me-2 text-danger"/> An Error Occurred</Modal.Title>
+            </Modal.Header>
+            <Modal.Body>{errorModal.message}</Modal.Body>
+            <Modal.Footer>
+            <Button variant="secondary" onClick={() => setErrorModal({ show: false, message: "" })}>Close</Button>
+            </Modal.Footer>
+        </Modal>
+
       {showOtpModal && otpVerificationMobileNumber && (
         <OtpVerificationModal
           show={showOtpModal}
@@ -1055,10 +1091,10 @@ export default function WaiverApplicationForm() {
           </Row>
            {waiverSchemeData.max_waiver_cap_amount > 0 && (
              <Row className="justify-content-center mt-2">
-                <Col md={4} xs={6} className="metric-item text-center">
-                    <div className="metric-label text-muted">Max Waiver Cap</div>
-                    <strong className="metric-value fs-5">₹{waiverSchemeData.max_waiver_cap_amount?.toLocaleString('en-IN')}</strong>
-                </Col>
+               <Col md={4} xs={6} className="metric-item text-center">
+                   <div className="metric-label text-muted">Max Waiver Cap</div>
+                   <strong className="metric-value fs-5">₹{waiverSchemeData.max_waiver_cap_amount?.toLocaleString('en-IN')}</strong>
+               </Col>
              </Row>
            )}
 
@@ -1092,7 +1128,7 @@ export default function WaiverApplicationForm() {
           <h4 className="mb-0 card-form-title">Your Waiver Application Details</h4>
         </Card.Header>
         <Card.Body className="p-4">
-          {apiError && <Alert variant="danger" className="api-error-alert" onClose={() => setApiError("")} dismissible>{apiError}</Alert>}
+          
           {autoFillError && <Alert variant="warning" className="autofill-error-alert" onClose={() => setAutoFillError("")} dismissible><strong>Data Notice:</strong> {autoFillError}</Alert>}
           {showOtpModal && otpVerificationError && (
             <Alert variant="danger" className="mt-0 mb-3 p-2 text-center small" id="otp-error-anchor">
@@ -1141,21 +1177,10 @@ export default function WaiverApplicationForm() {
             ))}
 
             <hr className="my-4"/>
-            <h5 className='mb-3 section-title'><FaFileMedicalAlt className="me-2 text-danger"/>Mandatory Documents (KYC)</h5>
+            <h5 className='mb-3 section-title'><FaFileMedicalAlt className="me-2 text-danger"/>Documents</h5>
             <ListGroup variant="flush" className='mb-4 mandatory-docs-listgroup'>
-              {renderRequiredDocumentItem('aadhaar_card', true)}
-              {renderRequiredDocumentItem('pan_card', true)}
+              {allDocsToRender.map(docKey => renderRequiredDocumentItem(docKey, requiredDocKeys.has(docKey)))}
             </ListGroup>
-
-            {otherSchemeRequiredDocs.length > 0 && (
-              <>
-                <hr className="my-4"/>
-                <h5 className='mb-3 section-title'><FaListOl className="me-2 text-info"/>Other Scheme Specific Documents</h5>
-                <ListGroup variant="flush" className='mb-4 required-docs-listgroup'>
-                  {otherSchemeRequiredDocs.map((doc) => renderRequiredDocumentItem(doc.schema_id || doc.name))}
-                </ListGroup>
-              </>
-            )}
 
             {showAnnexureUpload && (
               <>
@@ -1186,7 +1211,7 @@ export default function WaiverApplicationForm() {
                     <Form.Group controlId="annexureFile" className="mb-2">
                       <Form.Label>Upload Signed Annexure (PDF only)*</Form.Label>
                       <Form.Control type="file" accept="application/pdf" onChange={handleAnnexureFileChange}
-                        isInvalid={showValidationErrors && !!formErrors.annexure} disabled={showOtpModal} size="sm"/>
+                        isInvalid={showValidationErrors && !!formErrors.annexure} disabled={showOtpModal || isExtracting} size="sm"/>
                       {annexureFile && <div className="mt-1 text-muted small">Selected: {annexureFile.name}</div>}
                       {existingAnnexureFileRef && !annexureFile && <div className="mt-1 text-success small"><FaCheckCircle className="me-1"/> Current: {decodeURIComponent(new URL(existingAnnexureFileRef).pathname.split('/').pop()||existingAnnexureFileRef).substring(0,30)}...</div>}
                       <Form.Control.Feedback type="invalid">{formErrors.annexure}</Form.Control.Feedback>
@@ -1225,7 +1250,7 @@ export default function WaiverApplicationForm() {
                   {isSavingDraft ? <><Spinner as="span" animation="border" size="sm" /> Saving...</> : (draftSaveStatus.saved ? <><FaCheckCircle className="me-1"/>Draft Saved</> : <><FaRegSave className="me-1"/>Save Draft</>)}
                 </Button>
                 <Button type="submit" variant="primary" className="submit-button"
-                  disabled={isSubmitting || isSavingDraft || !isFormValidForSubmit || showOtpModal}
+                  disabled={isSubmitting || isSavingDraft || showOtpModal}
                   title={!isFormValidForSubmit ? "Please complete all required fields and verifications." : (showOtpModal ? "Please complete OTP verification." : "Submit Waiver Application")}>
                   {isSubmitting ? <><Spinner as="span" animation="border" size="sm" className="me-1"/> Submitting...</> : <><FaCloudUploadAlt className="me-1"/>Submit Waiver Application</>}
                 </Button>

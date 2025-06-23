@@ -215,6 +215,7 @@ export default {
         .populate("user_id", "name email")
         .sort({ created_at: -1 })
         .lean();
+
       return res.status(200).json({ success: true, data: submissions });
     } catch (err) {
       console.error("Error listing waiver submissions:", err);
@@ -722,6 +723,8 @@ export default {
         .skip(skip)
         .limit(parseInt(limit))
         .lean();
+
+      console.log(submissions)
       
       const totalRecords = await WaiverSubmission.countDocuments(query);
 

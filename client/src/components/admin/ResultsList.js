@@ -29,27 +29,24 @@ import LiquidLoader from '../super/LiquidLoader';
 const stageLabels = {
   draft: 'Draft', // Added draft
   pending: 'Pending Review',
-  document_verification: 'Docs Verification', // Shortened
-  pending_approval: 'Pending Approval',
   approved: 'Approved',
+  paid_to_applicant: 'Paid to Applicant', // Added paid_to_applicant
   rejected: 'Rejected'
 };
 
 const stageVariants = {
   draft: 'secondary-subtle', // Subtle variants
   pending: 'warning-subtle',
-  document_verification: 'info-subtle',
-  pending_approval: 'primary-subtle',
   approved: 'success-subtle',
+  paid_to_applicant: 'success-subtle', // Added paid_to_applicant
   rejected: 'danger-subtle'
 };
 
 const stageTextEmphasis = { // Matching text emphasis for subtle badges
     draft: 'secondary-emphasis',
     pending: 'warning-emphasis',
-    document_verification: 'info-emphasis',
-    pending_approval: 'primary-emphasis',
     approved: 'success-emphasis',
+    paid_to_applicant: 'success-emphasis', // Added paid_to_applicant
     rejected: 'danger-emphasis'
 };
 

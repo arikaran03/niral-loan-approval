@@ -6,7 +6,6 @@ import { requireRole } from '../middlewares/auth.js'; // Adjust path if necessar
 import addTimestamps from '../middlewares/timestamp.js'; // Assuming you might want timestamps for some actions
 
 const router = express.Router(); // For applicant-facing routes
-const adminRouter = express.Router(); // For admin-facing routes
 
 // ===============================================
 // APPLICANT (BORROWER) ROUTES
@@ -41,29 +40,6 @@ router.get(
     '/admin/:repaymentId',
     requireRole(['manager', 'staff', 'admin']),
     loanRepaymentController.adminGetLoanRepaymentDetails
-);
-
-/**
- * @route   POST /api/repayments/:repaymentId/communication
- * @desc    POST communication logs for a specific loan repayment record.
- * @access  Private (Admin/Manager - controller ensures ownership)
- */
-router.post(
-    '/:repaymentId/communication',
-    requireRole(['manager', 'staff']),
-    loanRepaymentController.adminAddCommunicationLog
-);
-
-/**
- * @route   POST /api/repayments/:repaymentId
- * @access  Private (User/Applicant - controller ensures ownership)
- * @desc    Update a specific loan repayment record (e.g., for payment updates).
- */
-router.post(
-    '/:repaymentId/communication-log',
-    requireRole(['user', 'applicant']),
-    addTimestamps, // Good for logging when the update was made
-    loanRepaymentController.applicantAddCommunicationLog
 );
 
 /**
@@ -115,7 +91,7 @@ router.post(
 
 // ===============================================
 // ADMIN ROUTES
-// Base Path: /api/admin/repayments (mounted in app.js for this adminRouter)
+// Base Path: /api/admin/repayments (mounted in app.js for this router)
 // These routes require 'manager' or 'staff' roles
 // ===============================================
 
@@ -124,7 +100,7 @@ router.post(
  * @desc    Admin: Get a list of all loan repayments with filtering and pagination.
  * @access  Private (Manager/Staff)
  */
-adminRouter.get(
+router.get(
     '/',
     requireRole(['manager', 'staff']),
     loanRepaymentController.adminGetAllLoanRepayments
@@ -135,7 +111,7 @@ adminRouter.get(
  * @desc    Admin: Get all loan repayments for a specific user.
  * @access  Private (Manager/Staff)
  */
-adminRouter.get(
+router.get(
     '/user/:userId',
     requireRole(['manager', 'staff']),
     loanRepaymentController.adminGetRepaymentsByUserId
@@ -146,7 +122,7 @@ adminRouter.get(
  * @desc    Admin: Get detailed information for a specific loan repayment record.
  * @access  Private (Manager/Staff)
  */
-adminRouter.get(
+router.get(
     '/:repaymentId',
     requireRole(['manager', 'staff']),
     loanRepaymentController.adminGetLoanRepaymentDetails
@@ -157,7 +133,7 @@ adminRouter.get(
  * @desc    Admin: Manually record a payment transaction.
  * @access  Private (Manager/Staff)
  */
-adminRouter.post(
+router.post(
     '/:repaymentId/transactions',
     requireRole(['manager', 'staff']),
     addTimestamps, // For transaction recording time
@@ -169,7 +145,7 @@ adminRouter.post(
  * @desc    Admin: Update an existing payment transaction's status or details.
  * @access  Private (Manager/Staff)
  */
-adminRouter.put(
+router.put(
     '/:repaymentId/transactions/:transactionId',
     requireRole(['manager', 'staff']),
     addTimestamps, // For update time of transaction
@@ -181,7 +157,7 @@ adminRouter.put(
  * @desc    Admin: Trigger late fee calculation and application for overdue installments on a loan.
  * @access  Private (Manager/Staff)
  */
-adminRouter.post(
+router.post(
     '/:repaymentId/apply-late-fees',
     requireRole(['manager', 'staff']),
     addTimestamps, // For logging when this action was taken
@@ -193,7 +169,7 @@ adminRouter.post(
  * @desc    Admin: Record a loan restructuring event.
  * @access  Private (Manager/Staff)
  */
-adminRouter.post(
+router.post(
     '/:repaymentId/restructure',
     requireRole(['manager', 'staff']),
     addTimestamps, // For restructure event time
@@ -205,7 +181,7 @@ adminRouter.post(
  * @desc    Admin: Waive specific charges (principal, interest, penalty) for a particular installment.
  * @access  Private (Manager/Staff)
  */
-adminRouter.post(
+router.post(
     '/:repaymentId/installments/:installmentNumber/waive',
     requireRole(['manager', 'staff']),
     addTimestamps, // For waiver action time
@@ -217,7 +193,7 @@ adminRouter.post(
  * @desc    Admin: Manually update the overall loan repayment status.
  * @access  Private (Manager/Staff)
  */
-adminRouter.put(
+router.put(
     '/:repaymentId/status',
     requireRole(['manager', 'staff']),
     addTimestamps, // For status change time
@@ -225,11 +201,23 @@ adminRouter.put(
 );
 
 /**
+ * @route   POST /api/repayments/:repaymentId
+ * @access  Private (User/Applicant - controller ensures ownership)
+ * @desc    Update a specific loan repayment record (e.g., for payment updates).
+ */
+router.post(
+    '/:repaymentId/communication',
+    requireRole(['user', 'applicant']),
+    addTimestamps, // Good for logging when the update was made
+    loanRepaymentController.applicantAddCommunicationLog
+);
+
+/**
  * @route   POST /api/admin/repayments/:repaymentId/communication-log
  * @desc    Admin: Add an entry to the communication log for a loan repayment.
  * @access  Private (Manager/Staff)
  */
-adminRouter.post(
+router.post(
     '/:repaymentId/communication-log',
     requireRole(['manager', 'staff']),
     addTimestamps, // For log entry time
@@ -241,11 +229,11 @@ adminRouter.post(
  * @desc    Admin: Add an internal note to a loan repayment record for administrative tracking.
  * @access  Private (Manager/Staff)
  */
-adminRouter.post(
+router.post(
     '/:repaymentId/internal-note',
     requireRole(['manager', 'staff']),
     addTimestamps, // For note creation time
     loanRepaymentController.adminAddInternalNote
 );
 
-export { router as applicantRepaymentRoutes, adminRouter as adminRepaymentRoutes };
+export { router as applicantRepaymentRoutes, router as adminRepaymentRoutes };

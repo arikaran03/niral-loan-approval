@@ -155,25 +155,13 @@ const DynamicDocumentForm = () => {
 
   // Handle changes for options array (for select/multiselect)
   const handleOptionsChange = (index, e) => {
-    const newFields = [...fields];
-    newFields[index].options = e.target.value
-      .split(",")
-      .map((option) => option.trim())
-      .filter((option) => option !== "");
-    setFields(newFields);
-    setValidationErrors((prev) => {
-      const newState = { ...prev };
-      if (newState.fields && newState.fields[index]) {
-        delete newState.fields[index].options;
-        if (Object.keys(newState.fields[index]).length === 0) {
-          delete newState.fields[index];
-          if (Object.keys(newState.fields).length === 0) {
-            delete newState.fields;
-          }
-        }
-      }
-      return newState;
-    });
+    if (e.target.value.endsWith(", ")) {
+      return; // Ignore trailing comma and space
+    }
+
+    var changeFields = [...fields];
+    changeFields[index].options = e.target.value
+    setFields(changeFields);
   };
 
   // Client-side validation logic
@@ -607,7 +595,7 @@ const DynamicDocumentForm = () => {
                         {(fieldItem.type === "select" || fieldItem.type === "multiselect") && (
                             <Form.Group className="mb-3" controlId={`fieldOptions_${index}`}>
                             <Form.Label>Options (comma-separated) <span className="text-danger">*</span></Form.Label>
-                            <Form.Control type="text" value={Array.isArray(fieldItem.options) ? fieldItem.options.join(", ") : ""}
+                            <Form.Control type="text" value={fieldItem.options}
                                 onChange={(e) => handleOptionsChange(index, e)}
                                 isInvalid={!!fieldErrorObject.options}
                                 placeholder="Option 1, Option 2, Option 3"/>

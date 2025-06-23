@@ -148,10 +148,6 @@ const Profile = () => {
               </Card.Header>
                <ListGroup variant="flush">
                     {/* Adjusted icon margin to me-2 */}
-                    <ListGroup.Item action as={Link} to="/console/users" className="admin-link-item">
-                       <FaUsersCog className="me-2 text-secondary"/> Manage Users
-                       <FaExternalLinkAlt className="ml-2 text-muted small ms-auto" />
-                    </ListGroup.Item>
                     <ListGroup.Item action as={Link} to="/console/loans" className="admin-link-item">
                          <FaLandmark className="me-2 text-secondary"/> Manage Loan Schemes
                         <FaExternalLinkAlt className="ml-2 text-muted small ms-auto" />

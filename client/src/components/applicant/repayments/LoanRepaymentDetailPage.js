@@ -70,6 +70,7 @@ const makePaymentAPI = async (repaymentId, paymentData) => {
 
 const fetchForeclosureQuoteAPI = async (repaymentId) => {
   const response = await axiosInstance.get(`/api/repayments/${repaymentId}/foreclosure-quote`);
+  console.log("Foreclosure Quote Response:", response.data);
   return response.data.data;
 };
 
@@ -164,7 +165,7 @@ export default function LoanRepaymentDetailPage() {
         const data = await fetchLoanRepaymentDetailsAPI(repaymentId);
         setRepaymentDetails(data);
         if (!showPaymentModal) {
-          setPaymentAmount(data?.next_emi_amount?.toString() || "");
+            setPaymentAmount(data?.next_emi_amount ? Math.ceil(data.next_emi_amount).toString() : "");
         }
       } catch (err) {
         setError(err.response?.data?.message || "Failed to fetch repayment details.");
@@ -569,14 +570,17 @@ export default function LoanRepaymentDetailPage() {
               <InputGroup>
                 <InputGroup.Text>₹</InputGroup.Text>
                 <Form.Control 
-                    type="number" 
+                    type="number"
+                    onWheel={(e) => e.target.blur()}
                     placeholder="Enter amount" 
-                    value={Math.max(0, parseFloat(paymentAmount) || 0).toFixed(2)}
-                    onChange={(e) => setPaymentAmount(e.target.value)} 
+                    value={paymentAmount}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setPaymentAmount(Math.min(Math.max(value, 1), maxPayableCeiled).toString());
+                    }}
                     min="1"
                     max={maxPayableCeiled} // Enforces the max value in the input
-                    step="0.01" 
-                    required 
+                    required
                     disabled={paymentSubmitting} 
                 />
               </InputGroup>

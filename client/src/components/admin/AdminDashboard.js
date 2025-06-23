@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react';
 import { Container, Row, Col, Alert, Card, Table, Badge, Button } from 'react-bootstrap';
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend // Added LineChart, Line, Legend
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend
 } from 'recharts';
 import { Link } from 'react-router-dom';
 import { axiosInstance } from '../../config';
 import {
-    FaLandmark, FaFileAlt, FaChartBar, FaUsers, FaCoins, FaRegChartBar, FaExclamationTriangle, FaInfoCircle, FaEye, FaChartLine // Added FaChartLine
+    FaLandmark, FaFileAlt, FaChartBar, FaUsers, FaCoins, FaRegChartBar, FaExclamationTriangle, FaInfoCircle, FaEye, FaChartLine, FaArrowCircleRight
 } from 'react-icons/fa';
 import moment from 'moment';
 import './AdminDashboard.css';
@@ -93,6 +93,29 @@ const AdminDashboard = () => {
 
   return (
     <Container fluid className="admin-dashboard p-3 p-md-4">
+      {/* Add styles for clickable cards */}
+      <style type="text/css">
+        {`
+          .stat-card-link {
+            text-decoration: none;
+          }
+          .stat-card-link .card {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+          }
+          .stat-card-link .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+            cursor: pointer;
+          }
+          .stat-card-link .card .arrow-icon {
+            transition: transform 0.2s ease;
+          }
+          .stat-card-link .card:hover .arrow-icon {
+            transform: scale(1.1);
+          }
+        `}
+      </style>
+
       {/* Header */}
       <Row className="mb-4 align-items-center page-header">
         <Col>
@@ -107,27 +130,37 @@ const AdminDashboard = () => {
       <Row className="g-4 mb-4">
         {/* Total Loan Schemes Card */}
         <Col md={6} lg={3}>
-          <Card className="stat-card shadow-sm h-100 border-start border-primary border-4">
-            <Card.Body className="d-flex align-items-center">
-              <FaLandmark className="stat-icon text-primary opacity-75 me-3 mr-2" />
-              <div>
-                <div className="stat-label text-muted text-uppercase small">Total Loan Schemes</div>
-                <div className="stat-value fw-bold fs-4">{stats.totalLoans ?? 0}</div>
-              </div>
-            </Card.Body>
-          </Card>
+          <Link to="/console/loans" className="stat-card-link">
+            <Card className="stat-card shadow-sm h-100 border-start border-primary border-4">
+                <Card.Body className="d-flex justify-content-between align-items-center">
+                    <div className="d-flex align-items-center">
+                        <FaLandmark className="stat-icon text-primary opacity-75 me-3" />
+                        <div>
+                            <div className="stat-label text-muted text-uppercase small">Total Loan Schemes</div>
+                            <div className="stat-value fw-bold fs-4">{stats.totalLoans ?? 0}</div>
+                        </div>
+                    </div>
+                    <FaArrowCircleRight className="text-muted fs-4 arrow-icon" />
+                </Card.Body>
+            </Card>
+          </Link>
         </Col>
         {/* Total Submissions Card */}
         <Col md={6} lg={3}>
-          <Card className="stat-card shadow-sm h-100 border-start border-success border-4">
-            <Card.Body className="d-flex align-items-center">
-              <FaFileAlt className="stat-icon text-success opacity-75 me-3 mr-2" />
-              <div>
-                <div className="stat-label text-muted text-uppercase small">Total Submissions</div>
-                <div className="stat-value fw-bold fs-4">{stats.totalSubmissions ?? 0}</div>
-              </div>
-            </Card.Body>
-          </Card>
+          <Link to="/console/applications" className="stat-card-link">
+            <Card className="stat-card shadow-sm h-100 border-start border-success border-4">
+                <Card.Body className="d-flex justify-content-between align-items-center">
+                    <div className="d-flex align-items-center">
+                        <FaFileAlt className="stat-icon text-success opacity-75 me-3" />
+                        <div>
+                            <div className="stat-label text-muted text-uppercase small">Total Submissions</div>
+                            <div className="stat-value fw-bold fs-4">{stats.totalSubmissions ?? 0}</div>
+                        </div>
+                    </div>
+                    <FaArrowCircleRight className="text-muted fs-4 arrow-icon" />
+                </Card.Body>
+            </Card>
+          </Link>
         </Col>
         {/* Total Users Card */}
          <Col md={6} lg={3}>
@@ -255,8 +288,8 @@ const AdminDashboard = () => {
                           <td className="text-center">
                              <Badge
                                 pill
-                                bg={{ approved: 'success', pending: 'warning', rejected: 'danger' }[submission.stage] || 'light'}
-                                text={{ approved: 'light', pending: 'dark', rejected: 'light' }[submission.stage] || 'dark'}
+                                bg={{ approved: 'success', pending: 'warning', paid_to_applicant: 'primary', rejected: 'danger' }[submission.stage] || 'light'}
+                                text={{ approved: 'light', pending: 'dark', paid_to_applicant: 'light', rejected: 'light' }[submission.stage] || 'dark'}
                                 className="status-badge-table"
                              >
                                 {formatStageName(submission.stage)}
@@ -266,7 +299,7 @@ const AdminDashboard = () => {
                              {submission.amount?.toLocaleString('en-IN', { maximumFractionDigits: 0 }) ?? 'N/A'}
                           </td>
                           <td className="text-center">
-                            <Link to={`/console/applications/${submission._id}`} title="View Submission">
+                            <Link to={`/console/application/${submission._id}`} title="View Submission">
                               <Button size="sm" variant="outline-primary" className="action-button view">
                                 <FaEye />
                               </Button>

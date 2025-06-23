@@ -114,7 +114,7 @@ export default function MyLoanRepaymentsPage() {
                         <FolderSearch size={64} className="mb-3" />
                         <h4 className="mb-2">No Loans Found</h4>
                         <p className="text-muted">You currently have no active or past loan repayments to display.</p>
-                        <Button variant="primary" onClick={() => navigate('/browse-loans')}>Explore Loan Products</Button>
+                        <Button variant="primary" onClick={() => navigate('/')}>Explore Loan Products</Button>
                     </div>
                 )}
 

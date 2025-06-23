@@ -1,7 +1,7 @@
 // src/components/admin/AdminWaiverSubmissionsPage.jsx
 
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import {
   Container,
   Card,
@@ -336,7 +336,11 @@ export default function AdminWaiverSubmissionsPage() {
                           {sub.user_id?.email}
                         </small>
                       </td>
-                      <td>{sub._id?.title || "N/A"}</td>
+                      <td >
+                        <Link to={`/console/waiver-builder/${sub.waiver_scheme_id._id}`} className="text-decoration-none">
+                            {sub.waiver_scheme_id.title}
+                        </Link>
+                    </td>
                       <td>{formatDate(sub.created_at)}</td>
                       <td>
                         <Badge

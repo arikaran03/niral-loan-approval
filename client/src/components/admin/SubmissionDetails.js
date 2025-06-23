@@ -783,6 +783,7 @@ export default function SubmissionDetails() {
   const { stage } = submission;
   const displayLoanDetails = {
       title: submission.loanDetails?.title || submission.loan?.title || 'N/A',
+      loan_id: submission.loanDetails?._id || submission.loan_id?._id || 'N/A',
       interest_rate: submission.loanDetails?.interest_rate ?? submission.loan?.interest_rate,
       tenure_months: submission.loanDetails?.tenure_months ?? submission.loan?.tenure_months,
       processing_fee: submission.loanDetails?.processing_fee ?? submission.loan?.processing_fee,
@@ -799,7 +800,7 @@ export default function SubmissionDetails() {
             <Col xs="auto"> <Button variant="outline-secondary" size="sm" onClick={() => navigate(-1)} className="back-button d-inline-flex align-items-center"> <ArrowLeft size={16} className="me-1" /> Back </Button> </Col>
             <Col>
                 <h1 className="h4 mb-0 text-dark fw-bold"> Submission Details </h1>
-                {displayLoanDetails.title !== 'N/A' && <span className="text-muted d-block small">For Loan: {displayLoanDetails.title} (ID: {displayLoanDetails._id})</span>}
+                {displayLoanDetails.title !== 'N/A' && <span className="text-muted d-block small">For Loan: {displayLoanDetails.title} (ID: {displayLoanDetails.loan_id})</span>}
             </Col>
             <Col xs="auto">
                 <Button variant="outline-primary" size="sm" onClick={handleDownloadAsPDF} className="d-inline-flex align-items-center">

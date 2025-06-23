@@ -253,6 +253,7 @@ export default function AdminRepaymentsDashboard() {
                                             name="minOutstanding"
                                             value={filters.minOutstanding}
                                             onChange={handleFilterChange}
+                                            onWheel={(e) => e.target.blur()}
                                             isInvalid={!!outstandingRangeError} // Apply Bootstrap invalid style
                                             min="0"
                                         />
@@ -262,6 +263,7 @@ export default function AdminRepaymentsDashboard() {
                                             name="maxOutstanding"
                                             value={filters.maxOutstanding}
                                             onChange={handleFilterChange}
+                                            onWheel={(e) => e.target.blur()}
                                             isInvalid={!!outstandingRangeError} // Apply Bootstrap invalid style
                                         />
                                      </InputGroup>
